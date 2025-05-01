@@ -1,20 +1,18 @@
 import socket
-import cv2
-from typing import Set, List
-import multiprocessing
 import threading
 import time
 import queue
 from Drone_Action import Action
 
 class Tello(Action): #Action클래스를 상속받는 Tello 객체.
-    def __init__(self,tello_address : str, port : int) -> None:
+    def __init__(self,tello_address : str, port : int, pipe) -> None:
         super().__init__() #상속받는 객체 초기화화
         '''
         tello_address - Tello 드론의 IP 주소 (예: "192.168.0.73")
         port - 내부적으로 바인딩할 포트 번호
         '''
         try:
+            self.tello_to_main_pipe = pipe
             self.tello_address = (tello_address, 8889)    # Tello 드론이 명령을 수신하는 주소와 포트
             self.response_que : queue.Queue[str] = queue.Queue(maxsize=3)     # Tello 드론의 응답을 저장할 큐
             self.drone_exit_event : threading.Event = threading.Event()    # 종료 여부를 확인하는 이벤트
