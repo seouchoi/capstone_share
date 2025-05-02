@@ -6,6 +6,8 @@ class Action:
         time.sleep(wait_time) #명령 내리고 조금 기다림(바꾸면됨)
         return self.get_response() #응답 수신신
 
+    def get_battery(self):
+        return self.send_command("battery?")
     # ✅ 기본 비행
     def takeoff(self):
         return self.send_command("takeoff")  # 자동 이륙
