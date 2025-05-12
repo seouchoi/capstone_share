@@ -2,7 +2,7 @@ import socket
 import threading
 import time
 import queue
-from Drone_Action import Action
+from Tello_Action import Action
 
 class Tello(Action): #Action클래스를 상속받는 Tello 객체.
     def __init__(self,tello_address : str, port : int, pipe) -> None:

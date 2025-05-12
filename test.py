@@ -3,7 +3,9 @@ from Get_Video import VideoReceiver
 from Mission_Command import Commander
 import multiprocessing
 import time
-
+from Gcs_connector import GcsConnector
+from typing import Any, Dict, List, Optional, Union
+import asyncio
 #tello1 = 111
 #tello2 = 110
 
@@ -72,22 +74,71 @@ async def main():
     #4. Map 좌표추정 프로세스 실행
     
     #5. Commander에서 상태 모니터링 및 미션 제어(스레드로 실행할 예정정)
-    commander = Commander(tello_info, main_to_tello_pipes) #Commander객체를 선언해서 실행시킴(해당 객체는 메인 프로세스에서 스레드로 실행될 예정.)
+    commander = Commander(tello_info, main_to_tello_pipes,) #Commander객체를 선언해서 실행시킴(해당 객체는 메인 프로세스에서 스레드로 실행될 예정.)
     commander.mission_start()
 
     #6. 메인 드론 동작 프로세스
     
     
-    # 종료 처리
-    try:
-        for p in control_procs + [video_proc]:
-            p.join()
-    except KeyboardInterrupt:
-        print("[TEST END] 종료 요청")
-        for p in control_procs + [video_proc]:
-            p.terminate()
+    
 
 
+#if __name__ == "__main__":
+#    multiprocessing.set_start_method("spawn") #윈도우 호환 멀티프로세싱 실행.
+#    main()
+def run_video_receiver(tello_ips, video_to_main_pipe) -> None:
+    vr = VideoReceiver(tello_ips, video_to_main_pipe)
+    vr.vid_main()
+    
+
+def run_tello_process(tello_address : str, control_port : int, tello_to_main_pipe : Any) -> None:
+    tello = Tello(tello_address, control_port, tello_to_main_pipe)
+    if not tello.connect(): #tello 연결 시도
+        print(f"[ERROR] 드론 연결 실패: {tello_address}")
+        return
+    tello.tello_control()
+
+
+class Main:
+    def __init__(self) -> None:
+        self.tello_info : Dict = {"tello0": ["192.168.10.1", 9000],
+                                  "tello1": ["192.168.10.2", 9001]}
+        self.tello_ips : List = []
+        self.main_to_tello_pipes : Dict = {}
+        self.control_procs : List = []
+        self.main_to_video_pipe, self.video_to_main_pipe = multiprocessing.Pipe()
+        self.main_to_gcs_pipe, self.gcs_to_main_pipe = multiprocessing.Pipe()
+        self.gcs_connecter = GcsConnector(self.main_to_gcs_pipe)
+    
+    
+        
+        
+    async def main(self) -> None:
+        self.gcs_connecter.start()
+        for i, (name, (ip, port)) in enumerate(self.tello_info.items()):
+            self.tello_ips.append(ip)
+            globals()[f"main_to_tello_pipe_{ip}"], globals()[f"tello_to_main_pipe_{ip}"] = multiprocessing.Pipe()   #메인과 텔로 프로세스를 이어줄 파이프를 만듦.
+            self.main_to_tello_pipes[f"tello{i}"] = globals()[f"main_to_tello_pipe_{ip}"] #{"tello1" : main_to_tello_pipe_{ip}}
+            p = multiprocessing.Process(target = run_tello_process, args=(ip, port, globals()[f"tello_to_main_pipe_{ip}"])) #각각의 드론에 대해서 프로세스 실행.(만들어진 파이프도 줆.)
+            p.start() #텔로 프로세스 실행.
+            self.control_procs.append(p) #컨트롤 프로세스에 해당 프로세스를 추가함
+            print(f"[INFO] 드론 제어 프로세스 실행됨 → {name}")
+        video_proc = multiprocessing.Process(target=run_video_receiver, args=(self.tello_ips, self.video_to_main_pipe)) 
+        video_proc.start()
+        print("[INFO] VideoReceiver 프로세스 실행됨")
+        commander = Commander(self.tello_info, self.main_to_tello_pipes) #Commander객체를 선언해서 실행시킴(해당 객체는 메인 프로세스에서 스레드로 실행될 예정.)
+        commander.start()
+        print("[INFO] Commander 프로세스 실행됨")
+        # 종료 처리
+        try:
+            for p in control_procs + [video_proc]:
+                p.join()
+        except KeyboardInterrupt:
+            print("[TEST END] 종료 요청")
+            for p in control_procs + [video_proc]:
+                p.terminate()
+        
 if __name__ == "__main__":
     multiprocessing.set_start_method("spawn") #윈도우 호환 멀티프로세싱 실행.
-    main()
+    main = Main()
+    asyncio.run(main.main()) 

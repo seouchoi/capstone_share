@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 
 class YoloImageDetector:
-    def __init__(self, model_path=r"C:\Users\hi034\OneDrive\바탕 화면\캡스톤 프로젝트\drone\rand2.pt"):
+    def __init__(self, model_path="rand2.pt"):
         self.model = YOLO(model_path) #훈련된 모델을 로드함.
         self.sessions = {} # IP별 세션 상태를 저장하는 딕셔너리
 
