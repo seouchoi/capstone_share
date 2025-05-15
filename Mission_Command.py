@@ -8,9 +8,12 @@ class Commander:
         self.death_drone = [] #죽은 드론을 저장하는 리스트
         self.tello_command : dict = {} #드론에 대한 명령을 저장하는 딕셔너리
         for i, (name, (ip, port)) in enumerate(tello_info.items()):
-            self.tello_command[name] = '' #각 드론에 대한 명령을 저장하기 위한 딕셔너리
+            self.tello_command[name] = '' #각 드론에 대한 명령을 저장하기 위한 딕셔너리      
+        self.readjust = False #위치 재조정 여부
+        
     def is_alive(self, name, pipe) -> bool:
         if name not in self.death_drone:
+            print("is_alive 호출")
             pipe.send(("get_battery", (), {}))
             if not pipe.poll(0.1):
                 self.death_drone.append(name)
@@ -21,24 +24,27 @@ class Commander:
 
         
     #아래와 같은 형식으로 명령을 주면됨.(Action class에서 제대로 만들어져야함.)
-    def situation_1(self,pipe) -> None:
+    def situation_1(self,pipe, name) -> None:
         #쌈뽕하게 작성한 부분(효율은 좋지만 가독성 구림)
-        pipe["tello1"].send(("takeoff", (), {})) 
+        #실험용
+        print("situation_1 호출")
+        pipe.send(("double_sin_wave", (), {"side": name})) 
         
-        #굉장히 쉬움. if문을 이용해서 사용 가능능
-        #pipe["tello2"].send("takeoff")
-        
-        pass
-        
-    def situation_2(self, death, pipe) -> None:
-        if death == "tello1":
-            #tello2에 대한 명령
-            pass
-        else:
-            #tello1에 대한 명령령
-            pass
-        pass
-    
+    def situation_2(self, death: str, pipe) -> None:
+        """드론 한 대 사망 시: 생존 드론 재배치 후 솔로 웨이브"""
+        survivor = "tello1" if death == "tello0" else "tello0"
+
+        if not self.readjust:
+            # 1) 위치 재조정 명령 전송
+            pipe.send(("readjust_position", (), {"side": survivor}))
+            # 2) readjust 완료 ACK 대기 (최대 5 s)
+            if pipe.poll(5.0):
+                _ = pipe.recv()
+            self.readjust = True
+
+        # 3) 솔로 사인웨이브 시작
+        pipe.send(("solo_sin_wave", (), {"side": survivor}))
+
     #처음은 드론 두 대만 사용할 것이므로 드론이 2개 일 때, 1개 일 때만 상황이 주어짐
     # def situation_3(self):
     #     pass
@@ -55,7 +61,7 @@ class Commander:
                     pipe.send(self.tello_command[name])
                     self.tello_command[name] = ''
                 elif self.death_drone == []:
-                    self.situation_1(pipe)
+                    self.situation_1(pipe, name)
                 else:
                     self.situation_2(self.death_drone[0],pipe)
                 pass
