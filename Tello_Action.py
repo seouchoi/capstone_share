@@ -17,30 +17,32 @@ class Action:
         return self.send_command('streamon',wait_time)
 
 
-    def get_battery(self) -> None:
+    def get_battery(self, wait_time : float = 1) -> None:
         self.empty_response()
-        bat = self.send_command("battery?")
+        bat = self.send_command("battery?",wait_time)
         self.tello_state['battery'] = bat #배터리 정보를 딕셔너리에 저장
-        self.tello_to_main_pipe.send(bat) #배터리 정보를 메인으로 보내줌
+        self.tello_to_main_pipe.send(('battery', bat)) #배터리 정보를 메인으로 보내줌
         
         
-    def update_state(self) -> None:
+    def update_state(self, wait_time : float = 0.5) -> None:
         self.empty_response()
-        attitude = self.send_command("attitude?", wait_time = 0.1) #드론의 상태를 받아옴
+        attitude = self.send_command("attitude?", wait_time) #드론의 상태를 받아옴
         if attitude == 'error':
             return
         for part in attitude.split(';'):
             if part.startswith('yaw:'):
-                self.tello_state['yaw'] = int(part.split(':')[1])
-        height = self.send_command("height?", wait_time = 0.1) #드론의 높이를 받아옴
-        if height == 'error':
-            return
-        if height.startswith('height:'):
-            self.tello_state['height'] = int(height.split(':')[1])
+                self.tello_state['yaw'] = int(part.split(':')[1]) - self.tello_state['yaw_error']
+        # height = self.send_command("height?", wait_time) #드론의 높이를 받아옴
+        # if height == 'error':
+        #     return
+        # if height.startswith('height:'):
+        #     self.tello_state['height'] = int(height.split(':')[1])
 
 
-    def takeoff(self):
-        return self.send_command("takeoff")  # 자동 이륙
+    def takeoff(self, wait_time: float = 10) -> None:
+        self.empty_response()
+        res = self.send_command("takeoff",wait_time)  # 자동 이륙
+        self.tello_to_main_pipe.send(('takeoff', res))
 
 
     def land(self):
@@ -79,66 +81,64 @@ class Action:
         self.send_command(cmd, wait_time = -1)
 
 
-    def double_sin_wave(self,
-                        disp_amp: float = 80.0,   # y 변위 진폭(±cm)
-                        fb_speed:  int   = 35,    # 전진 속도(cm/s)
-                        interval:  float = 0.1,
-                        side: str = "tello0"):
+    def double_sin_wave(self, cycles: int = 1,
+                        interval = 0.02,
+                        yaw_turn_speed = 60,
+                        turn_time = 1.0,
+                        hold_time = 4.0,
+                        straight_time = 0.7,
+                        fb_max = 100
+                        ):
         """
-        전진(x) + y 사인 변위(0 → ±A → 0) 한 사이클 실행.
-        - side == "tello0" : +sin(…)  (첫 변위가 +방향)
-        - side == "tello1" : -sin(…)  (첫 변위가 –방향)
+        Action 클래스를 사용하는 부드러운 지그재그 비행.
+        * 전진 속도 35 cm/s 유지
+        * yaw 속도는 sin 램프로 0→±60→0 deg/ss
+        * 진폭 ≈ ±1.5 m
         """
-        # ── 부호 결정 ──────────────────────────────────────────────
-        sign = 1 if side == "tello0" else -1   # 좌우 방향 반전
+        yaw_deg = 0.0 
+        fb_speed = self.compute_drone_speed()
+        print(f"[INFO] 🛫  smooth-yaw double_sin_wave: fb_speed = {fb_speed} cm/s")
+        segments = [
+            (-yaw_turn_speed, turn_time),   # 왼쪽으로 서서히
+            (0,                 hold_time),
+            ( yaw_turn_speed,   turn_time), # 가운데 복귀
+            (0,                 straight_time),
+            ( yaw_turn_speed,   turn_time), # 오른쪽으로 서서히
+            (0,                 hold_time),
+            (-yaw_turn_speed,   turn_time), # 가운데 복귀
+            (0,                 straight_time)
+        ]
 
-        # ── 1) 주기 자동 결정 (v_y ≤ 100) ─────────────────────────
-        max_lr_speed_needed = 2 * math.pi * disp_amp       # |Aω|
-        period = max(max_lr_speed_needed / 100.0, 3.0)     # 최소 3 s
-        omega  = 2 * math.pi / period
+        print("[INFO] 🛫  smooth-yaw double_sin_wave 시작")
+        for _ in range(cycles):
+            for target_yaw, seg_t in segments:
+                steps = int(seg_t / interval)
 
-        # ── 2) 제어 루프 ──────────────────────────────────────────
-        start_t = time.time()
-        est_yaw = 0.0
+                if target_yaw != 0:  # --- TURN (sin 램프) ---
+                    sign = 1 if target_yaw > 0 else -1
+                    vmax = abs(target_yaw)
+                    for i in range(steps):
+                        # 1) 실제 yaw 업데이트
+                        self.update_state()
+                        current_yaw = self.tello_state['yaw']
+                        phase = i / max(1, steps - 1)  # 0→1
+                        yaw_rc = sign * vmax * math.sin(math.pi * phase)
+                        yaw_rad = math.radians(current_yaw)
+                        fb_cmd = int(min(fb_max, fb_speed / max(1e-5, abs(math.cos(yaw_rad)))))
+                        self.rc(0, fb_cmd, 0, int(yaw_rc))
+                        time.sleep(interval)
 
-        while (t := time.time() - start_t) <= period:
-            # (a) 좌우 속도 (±100 안으로)
-            lr_speed = sign * disp_amp * omega * math.cos(omega * t)
-            lr = int(max(-100, min(100, lr_speed)))
-
-            # (b) 목표 헤딩
-            tgt_yaw = math.degrees(math.atan2(lr, fb_speed))
-
-            # (c) P 제어로 yaw rate 계산
-            err = tgt_yaw - est_yaw
-            if err > 180:  err -= 360
-            if err < -180: err += 360
-            d = int(max(-100, min(100, 1.8 * err)))
-
-            # (d) rc 전송
-            self.rc(lr, fb_speed, 0, d)
-
-            # (e) yaw 추정
-            est_yaw = (est_yaw + d * interval + 180) % 360 - 180
-            time.sleep(interval)
-        
-        self.rc(0, 0, 0, 0)                     # 잠깐 정지
-        time.sleep(0.2)
-
-        if abs(est_yaw) > 2:                    # ±2° 이상이면 정렬
-            rot_deg = int(round(abs(est_yaw)))
-            if est_yaw > 0:
-                # 기수가 CCW(+) 쪽으로 돌아가 있었다면 ↘︎ CW 로 복귀
-                self.cw(rot_deg)
-            else:
-                # 기수가 CW(-) 쪽으로 돌아가 있었다면 ↖︎ CCW 로 복귀
-                self.ccw(rot_deg)
-
-            # 회전 시간: 각도/100 °·s⁻¹  + 여유
-            time.sleep(rot_deg / 100 + 0.3)
-
-        self.rc(0, 0, 0, 0)                     # 최종 호버
-            
+                else:
+                    for _ in range(steps):
+                        self.update_state()
+                        current_yaw = self.tello_state['yaw']
+                        yaw_rad = math.radians(current_yaw)
+                        fb_cmd = int(min(fb_max, fb_speed / max(1e-5, abs(math.cos(yaw_rad)))))
+                        self.rc(0, fb_cmd, 0, 0)
+                        time.sleep(interval)
+                        
+        self.tello_to_main_pipe.send(('double_sin_wave','ok'))
+               
     def readjust_position(self,
                       side: str,            # 고장나지 않은 드론
                       diag_x: int = 100,    # x 성분(cm)

@@ -1,36 +1,45 @@
-from typing import List
+from typing import List, Dict, Tuple, Any
 import threading
+import time
+
 
 class Commander:
-    def __init__(self,tello_info: dict, main_to_tello_pipes: dict):
-        self.tello_info = tello_info #tello 정보가 들어가있는 딕셔너리
-        self.main_to_tello_pipes = main_to_tello_pipes #main쪽에 연결돼어있는 파이프(tello와 연결결)
-        self.death_drone = [] #죽은 드론을 저장하는 리스트
+    def __init__(self,tello_info: Dict, main_to_tello_pipes: Dict) -> None:
+        self.tello_info : Dict = tello_info #tello 정보가 들어가있는 딕셔너리
+        self.main_to_tello_pipes : Dict = main_to_tello_pipes #main쪽에 연결돼어있는 파이프(tello와 연결결)
+        self.death_drone : List = [] #죽은 드론을 저장하는 리스트
         self.tello_command : dict = {} #드론에 대한 명령을 저장하는 딕셔너리
-        for i, (name, (ip, port)) in enumerate(tello_info.items()):
+        for name in tello_info.keys():
             self.tello_command[name] = '' #각 드론에 대한 명령을 저장하기 위한 딕셔너리      
-        self.readjust = False #위치 재조정 여부
+        self.readjust : bool = False #위치 재조정 여부
         
-    def is_alive(self, name, pipe) -> bool:
+        
+    def is_alive(self, name :str , pipe : Any) -> bool:
         if name not in self.death_drone:
-            print("is_alive 호출")
             pipe.send(("get_battery", (), {}))
-            if not pipe.poll(0.1):
+            respone : Tuple = self.wait_for_respone(pipe, 1.1)
+            if respone[1] == 'timeout' or respone[1] == 'error':
                 self.death_drone.append(name)
                 return False
             else:
-                _ = pipe.recv()
-        return True
+                return True
+        return False
+            
+    
+    def wait_for_respone(self, pipe: Any, wait_time: float = 1.0) -> Tuple:
+        if pipe.poll(wait_time):
+            response : Tuple = pipe.recv()
+            return response
+        else:
+            return ('', 'timeout') 
 
-        
     #아래와 같은 형식으로 명령을 주면됨.(Action class에서 제대로 만들어져야함.)
-    def situation_1(self,pipe, name) -> None:
-        #쌈뽕하게 작성한 부분(효율은 좋지만 가독성 구림)
-        #실험용
-        print("situation_1 호출")
-        pipe.send(("double_sin_wave", (), {"side": name})) 
+    def situation_1(self, name : str, pipe : Any) -> None:
+        print(f"{name} situation_1 호출")
+        pipe.send(("double_sin_wave", (), {})) 
         
-    def situation_2(self, death: str, pipe) -> None:
+        
+    def situation_2(self, death : str, name : str, pipe : Any) -> None:
         """드론 한 대 사망 시: 생존 드론 재배치 후 솔로 웨이브"""
         survivor = "tello1" if death == "tello0" else "tello0"
 
@@ -53,28 +62,34 @@ class Commander:
     #여기서 situation을 반복문을 계속 돌려서 drone_count가 줄어들면 그게 맞게 행동을 바꾸도록 해야함.
     #함수를 비동기로 만들어서 하던지, 또는 메인 프로세스에서 스레드를 하나 만들어서 commander용으로 할건지 결정해야함.
     
-    def command_thread(self, name, pipe) -> None:
+    def command_thread(self, name : str, pipe : Any) -> None:
+        takeoff : bool = False
         while True:
             state : bool = self.is_alive(name, pipe)
+            print(f"{name} state: {state}")
             if state:
                 if self.tello_command[name] != '':
-                    pipe.send(self.tello_command[name])
+                    print(f"{name} command: {self.tello_command[name]}")
+                    pipe.send((self.tello_command[name], (), {}))
+                    response : Tuple = self.wait_for_respone(pipe, 12)
+                    print(f"{name} response: {response}")
                     self.tello_command[name] = ''
-                elif self.death_drone == []:
-                    self.situation_1(pipe, name)
-                else:
-                    self.situation_2(self.death_drone[0],pipe)
-                pass
+                    if response[0] == 'takeoff' and response[1] == 'ok':
+                        takeoff = True
+                    time.sleep(3)
+                    continue
+                elif takeoff:
+                    if self.death_drone == []:
+                        self.situation_1(name, pipe)
+                    else:
+                        self.situation_2(self.death_drone[0],name, pipe)
+                    response : Tuple = self.wait_for_respone(pipe, 30)
+                    if response[1] == 'timeout' or response[1] == 'error':
+                        print(f"{name} response: {response}")
+                        self.death_drone.append(name)
+                        return
             else:
-                self.death_drone.append(name)
-                break
-            '''
-            if pipe.poll(10): #10초 이내에 응답이 오면
-                response = pipe.recv()
-            else:
-                print("Timeout occurred while waiting for response.")
-                return
-            '''
+                return            
             
     
     def start(self) -> None:

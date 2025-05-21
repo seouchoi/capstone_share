@@ -103,16 +103,22 @@ def run_tello_process(name : str, tello_address : str, control_port : int, tello
 
 class Main:
     def __init__(self) -> None:
-        self.tello_info : Dict = {"tello0": ["192.168.10.1", 9000],
-                                  "tello1": ["192.168.10.2", 9001]}
+        self.tello_info : Dict = {"tello0": ["192.168.10.1", 9000]}#,
+                                  #"tello1": ["192.168.10.2", 9001]}
         self.tello_ips : List = []
         self.main_to_tello_pipes : Dict = {}
         self.control_procs : List = []
         self.main_to_video_pipe, self.video_to_main_pipe = multiprocessing.Pipe()
         self.main_to_gcs_pipe, self.gcs_to_main_pipe = multiprocessing.Pipe()
-        self.gcs_connecter = GcsConnector(self.main_to_gcs_pipe)
+        self.gcs_connecter = GcsConnector(self.gcs_to_main_pipe)
         self.drone_locaion_Array : Any = multiprocessing.Array("d", 3)
         self.drone_location_lock : Any = multiprocessing.Lock()
+        with self.drone_location_lock:
+            self.drone_locaion_Array[0] = 0.0
+            self.drone_locaion_Array[1] = 0.0
+            self.drone_locaion_Array[2] = 0.0
+        print("[INFO] GCS 연결됨")
+        print("[INFO] 드론 제어 프로세스 시작됨")
         
         
     async def main(self) -> None:
@@ -137,6 +143,13 @@ class Main:
         commander = Commander(self.tello_info, self.main_to_tello_pipes) #Commander객체를 선언해서 실행시킴(해당 객체는 메인 프로세스에서 스레드로 실행될 예정.)
         commander.start()
         print("[INFO] Commander 프로세스 실행됨")
+        #임시
+        while True:
+            with self.drone_location_lock:
+                self.drone_locaion_Array[0] += 3.5
+            time.sleep(0.1)
+                
+            
         # 종료 처리
         try:
             for p in control_procs + [video_proc]:

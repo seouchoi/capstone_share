@@ -3,7 +3,7 @@ import threading
 import time
 import queue
 from Tello_Action import Action
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List
 import math
 
 
@@ -27,69 +27,47 @@ class Tello(Action): #Action클래스를 상속받는 Tello 객체.
             self.socket_tello.bind(("0.0.0.0",port))    # Tello 명령 수신 소켓 바인딩
             self.response_thread = threading.Thread(target = self.receive_response)    # Tello로부터 명령 응답을 받아오는 스레드
             self.response_thread.daemon = True
-            self.drone_locaion_Array = drone_location_array #드론 위치를 저장할 배열 
-            self.drone_location_lock = drone_location_lock #드론 위치를 저장할 배열에 대한 락
-            self.init_yaw : List = [0, 0]
+            self.drone_locaion_Array = drone_location_array #드론 위치 배열 
+            self.drone_location_lock = drone_location_lock #드론 위치 배열에 대한 락
             self.tello_state : Dict ={
                 "battery" : 0, #드론의 배터리 잔량
                 "height" : 0, #드론의 높이
                 "yaw" : 0, #드론의 yaw
+                "yaw_error" : 0, #드론의 yaw 오차
                 "location" : [0, 0], #드론의 위치
             }
-            self.latest_time : float = 0.0 #드론의 최신 시간
-            self.tello_params : Dict = {
-                "init_distance" : -self.init_distance if self.name == 'tello0' else self.init_distance, #드론의 초기 거리
-                "side" : 0 if self.name == 'tello0' else 1, #드론의 방향
-                "cycle_distance" : 100, #드론이 이동하는 거리
-                "kp_pos" : 0.5, #드론의 위치를 보정하는 비율
-                "kp_yaw" : 0.5, #드론의 yaw를 보정하는 비율
-                "DT" : 0.1, #제어 주기
-                "threshold" : 20, #드론의 위치 오차
-            }
-            self.tello_params["drone_distance_offset"] = (-self.drone_distance_offset if self.name == 'tello0' else self.drone_distance_offset) - self.tello_params["init_distance"] #드론과의 거리리
+            self.latest_drone_location : Dict = {'location':[0,0], 'time':0} #드론의 위치와 시간을 저장하는 딕셔너리
         except Exception as e:
             print(e)
+       
             
+    def set_init_drone_location(self) -> None:    #드론의 위치를 초기화하는 함수
+        now = time.time()
+        location = self.get_drone_location() #드론의 위치를 가져옴
+        self.latest_drone_location['location'] = location #드론의 위치를 저장함
+        self.latest_drone_location['time'] = now #드론의 시간을 저장함
+            
+    
+    def set_init_drone_state(self) -> None:    #드론의 상태를 초기화하는 함수
+        self.update_state()
+        self.tello_state['yaw_error'] = self.tello_state['yaw']
+    
+    
+    def compute_drone_speed(self) -> float:    #드론의 속도를 계산하는 함수
+        now = time.time()
+        location = self.get_drone_location() #드론의 위치를 가져옴
+        speed = math.sqrt((location[0] - self.latest_drone_location['location'][0])**2 + (location[1] - self.latest_drone_location['location'][1])**2) / (now - self.latest_drone_location['time']) #드론의 속도를 계산함
+        self.latest_drone_location['location'] = location #드론의 위치를 저장함
+        self.latest_drone_location['time'] = now #드론의 시간을 저장함
+        return speed
+    
         
     def get_drone_location(self) -> List[float]:    #드론의 위치를 반환하는 함수
         with self.drone_location_lock:    #드론 위치를 저장할 배열에 대한 락을 걸어줌.
             drone_location = list(self.drone_locaion_Array) #드론 위치를 저장할 배열을 복사함.
-        drone_location[0] = drone_location[0] + 300 #드론 위치의 x좌표를 300만큼 더해줌.
-        drone_location[1] = drone_location[1] + self.tello_params["drone_distance_offset"] #드론 위치의 y좌표를 초기 거리만큼 더해줌.
         return drone_location #드론 위치를 반환함.
 
 
-    def set_init_state(self) -> None:    #드론의 초기 상태를 설정하는 함수
-        self.update_state() #드론의 상태를 업데이트함.
-        init_location = self.get_drone_location()
-        self.init_yaw[0] = self.tello_state["yaw"] #드론의 yaw를 초기 yaw로 설정함.
-        self.init_yaw[1] = init_location[2] #드론의 yaw를 초기 yaw로 설정함.
-        
-  
-    def compute_control(self, target_location: List[float]) -> Tuple[float, float, float, float]:
-        pass
-        #return vx, vy, yaw_vel, dist
-    
-    
-    def update_position(self, vx, vy) -> None:    #드론의 위치를 업데이트하는 함수
-        self.tello_state["location"] += vx * self.tello_params["DT"]
-        self.tello_state["location"] += vy * self.tello_params["DT"]
-
-    
-    def cycile(self) -> None:    #드론의 위치를 업데이트하는 함수
-        now = time.time()
-        if now - self.latest_time < self.tello_params["DT"]:
-            time.sleep(self.tello_params["DT"] - (now - self.latest_time))
-        self.latest_time = time.time()
-        self.update_state() #드론의 상태를 업데이트함.
-        target_location = self.get_drone_location() #드론의 위치를 가져옴.
-        vx, vy, yaw_vel, dist = self.compute_control(target_location) #드론의 위치를 업데이트함.
-        self.rc(int(vx), int(vy), 0, int(yaw_vel)) #드론의 속도를 업데이트함.
-        
-        if dist < self.tello_params["threshold"]:
-            self.tello_params["side"] = (self.tello_params["side"] + 1) % 3 #드론의 방향을 바꿈.
-
-    
     def connect(self) -> bool:    # Tello 드론과 연결 시도 함수
         self.response_thread.start()     # 드론 응답 수신 스레드 시작
         time.sleep(1) 
@@ -101,7 +79,7 @@ class Tello(Action): #Action클래스를 상속받는 Tello 객체.
     def receive_response(self) -> None:    #드론 소켓으로부터 응답을 수신하는 함수
         try:
             while True:
-                data, server = self.socket_tello.recvfrom(1518)     # 소켓에서 데이터를 읽어 큐에 저장
+                data, _ = self.socket_tello.recvfrom(1518)     # 소켓에서 데이터를 읽어 큐에 저장
                 self.response_que.put(str(data.decode(encoding="UTF-8"))) #응답을 받아서 응답 큐에 저장
         except Exception as e:
             print(e)
@@ -139,6 +117,8 @@ class Tello(Action): #Action클래스를 상속받는 Tello 객체.
       
       
     def tello_control(self): #이 함수는 commander 객체(메인프로세스)에서 파이프로부터 받아온 메세지를 실행하는 부분임.(계속해서 명령을 수행할 부분) 
+        self.set_init_drone_state()
+        self.set_init_drone_location()
         while True:
             if self.tello_to_main_pipe.poll(): #파이프로부터 받아진 메세지가 있는지 확인
                 func_name, args, kwargs = self.tello_to_main_pipe.recv() #응답을 받음. 목적은 Tello_Action에서 tello.forward()처럼 함수형식으로 부르기 위해 만듦.

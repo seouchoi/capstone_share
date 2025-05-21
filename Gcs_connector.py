@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Union
 
 
 class GcsConnector:
-    def __init__(self, pipe: Any, gcs_ip: str = '117.16.154.226', gcs_port: int = 5270, reconnect_delay: Union[int, float] = 5) -> None:
+    def __init__(self, pipe: Any, gcs_ip: str = '192.168.0.18', gcs_port: int = 5270, reconnect_delay: Union[int, float] = 5) -> None:
         self.pipe = pipe
         self.gcs_ip: str = gcs_ip
         self.gcs_port: int = gcs_port
@@ -25,8 +25,8 @@ class GcsConnector:
                 sock.settimeout(10)
                 sock.connect((self.gcs_ip, self.gcs_port))
                 sock.settimeout(None)
-                self._socket = sock
-                self.send_data(message='check', data={})
+                self.socket = sock
+                #self.send_data(message='check', data={})
                 return
             except Exception as e:
                 print(f"Connection failed: {e}")
@@ -35,7 +35,7 @@ class GcsConnector:
 
     def close(self) -> None:
         self.cancel_event.set()
-        if self._socket:
+        if self.socket:
             try:
                 self.socket.close()
             except Exception:
@@ -57,8 +57,8 @@ class GcsConnector:
 
 
     def recv_data(self) :
-        while True:
-            try:
+        try:
+            while True:
                 data_byte = self.socket.recv(1024)
                 data : Dict = pickle.loads(data_byte)
                 try:
@@ -66,10 +66,10 @@ class GcsConnector:
                 except Exception as e:
                     print("Error sending data to main process:", e)
                     break
-            except Exception as e :
-                print(f"Receive failed: {e}")
-                self.close()
-                
+        except Exception as e :
+            print(f"Receive failed: {e}")
+            self.close()
+            
 
     def start(self) -> None:
         thread = threading.Thread(target=self.recv_data, daemon=True)
