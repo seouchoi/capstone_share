@@ -13,7 +13,7 @@ class DetectionPipeline:
     
     def detect_objects(self, frame: np.ndarray, source_ip: str) -> None:
         #self.detector.predict_image(frame, source_ip) #객체 탐지지
-        cv2.imshow("Detection", frame)
+        cv2.imshow(source_ip, frame)
         cv2.waitKey(1)
     
     def process_frame(self, frame: np.ndarray, source_ip: str) -> None: #이미지 전처리와 객체 탐지를 수행시키는 부분.(Get_Video파일에서 while True로 계속해서 작동됨.)

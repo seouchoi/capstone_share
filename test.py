@@ -103,8 +103,7 @@ def run_tello_process(name : str, tello_address : str, control_port : int, tello
 
 class Main:
     def __init__(self) -> None:
-        self.tello_info : Dict = {"tello0": ["192.168.10.1", 9000]}#,
-                                  #"tello1": ["192.168.10.2", 9001]}
+        self.tello_info : Dict = {"tello0": ["192.168.0.99", 9000], "tello1": ["192.168.0.73", 9001]}
         self.tello_ips : List = []
         self.main_to_tello_pipes : Dict = {}
         self.control_procs : List = []

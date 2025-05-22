@@ -49,7 +49,8 @@ class VideoReceiver:
                             img = frame.to_ndarray(format="bgr24") # 프레임을 NumPy 배열(BGR24 포맷)로 변환
                             self.detection_pipeline.process_frame(img, ip) # 디텍션 파이프라인으로 이미지와 IP를 넘김
                     except Exception as decode_err: 
-                        print(f"[Decode Fail @ {ip}] {decode_err}")
+                        #print(f"[Decode Fail @ {ip}] {decode_err}")
+                        continue
                     buffer = b""  # 다음 프레임 준비
 
         except Exception as e:

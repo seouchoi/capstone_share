@@ -81,6 +81,7 @@ class Tello(Action): #Action클래스를 상속받는 Tello 객체.
             while True:
                 data, _ = self.socket_tello.recvfrom(1518)     # 소켓에서 데이터를 읽어 큐에 저장
                 self.response_que.put(str(data.decode(encoding="UTF-8"))) #응답을 받아서 응답 큐에 저장
+                print(f"[{self.tello_address}] {data.decode(encoding='UTF-8')}")
         except Exception as e:
             print(e)
                 

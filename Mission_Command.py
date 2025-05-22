@@ -93,10 +93,9 @@ class Commander:
             
     
     def start(self) -> None:
+        time.sleep(10)
         Commander_thread : List = []
         for tello_name in self.tello_info.keys():
-            print(self.main_to_tello_pipes)
-            print(tello_name)
             tello_command_thread : threading.Thread = threading.Thread(target=self.command_thread, args=(tello_name, self.main_to_tello_pipes[tello_name]), daemon=True)
             Commander_thread.append(tello_command_thread) #각 드론에 대한 스레드를 추가함
             tello_command_thread.start()
