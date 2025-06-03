@@ -78,7 +78,7 @@ class YoloImageDetector:
 
         if num == 0:
             self.cleanup(ip_address) # 아무것도 탐지 안 됐으면 세션 정리
-            return
+            return 0, 0, 0
         
         # 클래스(label)과 중심 좌표 (xywh) 추출
         classes = boxes.cls.astype(int) # 클래스 인덱스 (ex. 낙상 여부)
@@ -91,8 +91,8 @@ class YoloImageDetector:
                 # 낙상 누적이 6회 이상이면 감지 완료로 판단
                 x, y = int(xywh[i][0]), int(xywh[i][1])
                 self.cleanup(ip_address) # 현재 프레임에서 세션 정리
-                return # 감지 종료
+                return x, y, 1# 감지 종료
 
         self.cleanup(ip_address) # 루프가 끝난 후도 세션 정리
-        return
+        return 0, 0, 0
 

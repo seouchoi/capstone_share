@@ -64,12 +64,16 @@ class Commander:
     
     def command_thread(self, name : str, pipe : Any) -> None:
         takeoff : bool = False
+        start : bool = False
         while True:
             state : bool = self.is_alive(name, pipe)
             print(f"{name} state: {state}")
             if state:
                 if self.tello_command[name] != '':
                     print(f"{name} command: {self.tello_command[name]}")
+                    if self.tello_command[name] == 'ready':
+                        start = True
+                        continue
                     pipe.send((self.tello_command[name], (), {}))
                     response : Tuple = self.wait_for_respone(pipe, 12)
                     print(f"{name} response: {response}")
@@ -78,7 +82,7 @@ class Commander:
                         takeoff = True
                     time.sleep(3)
                     continue
-                elif takeoff:
+                elif takeoff and start:
                     if self.death_drone == []:
                         self.situation_1(name, pipe)
                     else:
@@ -93,7 +97,7 @@ class Commander:
             
     
     def start(self) -> None:
-        time.sleep(10)
+        time.sleep(1)
         Commander_thread : List = []
         for tello_name in self.tello_info.keys():
             tello_command_thread : threading.Thread = threading.Thread(target=self.command_thread, args=(tello_name, self.main_to_tello_pipes[tello_name]), daemon=True)

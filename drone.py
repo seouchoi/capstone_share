@@ -10,8 +10,11 @@ from typing import Any, Dict, Optional, Union
 
 
 class DroneObject:
-    def __init__(self) -> None:
+    def __init__(self, drone_locaion_Array, main_to_gcs_pipe, mission_callback) -> None:
         self.end = False
+        self.drone_locaion_Array = drone_locaion_Array
+        self.main_to_gcs_pipe = main_to_gcs_pipe
+        self.mission_callback = mission_callback
         self.drone :Optional[System] = None
         self.state : Dict = dict(
             speed=0.0,
@@ -46,6 +49,25 @@ class DroneObject:
                 async for pos in self.drone.telemetry.position():
                     self.state['location_latitude'] = round(pos.latitude_deg, 6)
                     self.state['location_longitude'] = round(pos.longitude_deg, 6)
+                    break
+                async for att in self.drone.telemetry.attitude_euler():
+                    self.state['yaw'] = round(att.yaw_deg ,2)
+                    break
+                async for vel in self.drone.telemetry.velocity_ned():
+                    self.state['speed'] = round(math.sqrt(vel.north_m_s**2 + vel.east_m_s**2 + vel.down_m_s**2 ))
+                    break
+                with self.drone_locaion_Array.get_lock():
+                    self.drone_locaion_Array[0] = self.state['location_latitude']
+                    self.drone_locaion_Array[1] = self.state['location_longitude']
+                    self.drone_locaion_Array[2] = self.state['yaw']
+                    self.drone_locaion_Array[3] = self.state['speed']
+
+                '''
+                if self.end:
+                    return
+                async for pos in self.drone.telemetry.position():
+                    self.state['location_latitude'] = round(pos.latitude_deg, 6)
+                    self.state['location_longitude'] = round(pos.longitude_deg, 6)
                     self.state['altitude'] = round(pos.relative_altitude_m, 2)
                     break
                 async for bat in self.drone.telemetry.battery():
@@ -59,7 +81,36 @@ class DroneObject:
                 async for vel in self.drone.telemetry.velocity_ned():
                     self.state['speed'] = round(math.sqrt(vel.north_m_s**2 + vel.east_m_s**2 + vel.down_m_s**2 ))
                     break
+                '''
             except Exception as e:
-                print(str(e))
+                print(f'update_drone_state : {str(e)}')
                 self.state['msg'] = str(e)
             await asyncio.sleep(0.1)
+            
+    
+    async def drone_action(self) -> None:
+        while True:
+            try:
+                if self.end:
+                    return
+                if self.main_to_gcs_pipe.poll():
+                    command = self.main_to_gcs_pipe.recv()
+                    if command == 'start':
+                        self.mission_callback('takeoff')
+                        await asyncio.sleep(3)
+                        
+                    if command == 'end':
+                        self.mission_callback('land')
+                        await self.drone.action.land()
+                        await asyncio.sleep(5)
+                        exit(1)
+                
+            except Exception as e:
+                print(f'drone_action : {str(e)}')
+    
+    async def command_main(self) -> None:
+        self.drone = System()
+        await self.connect_drone()
+        command_thread : threading.Thread = threading.Thread(target=self.update_drone_state)
+        command_thread.daemon=True
+        command_thread.start()

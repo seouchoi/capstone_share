@@ -6,6 +6,9 @@ import time
 from Gcs_connector import GcsConnector
 from typing import Any, Dict, List, Optional, Union
 import asyncio
+from multiprocessing.sharedctypes import SynchronizedArray
+import drone
+
 #tello1 = 111
 #tello2 = 110
 
@@ -93,11 +96,13 @@ def run_video_receiver(tello_ips, video_to_main_pipe) -> None:
     vr.vid_main()
 
 
-def run_tello_process(name : str, tello_address : str, control_port : int, tello_to_main_pipe : Any, drone_locaion_Array : Any, drone_location_lock : Any) -> None:
-    tello = Tello(name, tello_address, control_port, tello_to_main_pipe,drone_locaion_Array, drone_location_lock) #객체 선언
+def run_tello_process(name : str, tello_address : str, control_port : int, tello_to_main_pipe : Any, drone_locaion_Array : SynchronizedArray, tello_location_array : SynchronizedArray) -> None:
+    tello = Tello(name, tello_address, control_port, tello_to_main_pipe,drone_locaion_Array, tello_location_array) #객체 선언
     if not tello.connect(): #tello 연결 시도
         print(f"[ERROR] 드론 연결 실패: {tello_address}")
+        tello_to_main_pipe.send('f')
         return
+    tello_to_main_pipe.send('t')
     tello.tello_control()
 
 
@@ -109,21 +114,35 @@ class Main:
         self.control_procs : List = []
         self.main_to_video_pipe, self.video_to_main_pipe = multiprocessing.Pipe()
         self.main_to_gcs_pipe, self.gcs_to_main_pipe = multiprocessing.Pipe()
-        self.gcs_connecter = GcsConnector(self.gcs_to_main_pipe)
-        self.drone_locaion_Array : Any = multiprocessing.Array("d", 3)
-        self.drone_location_lock : Any = multiprocessing.Lock()
-        with self.drone_location_lock:
-            self.drone_locaion_Array[0] = 0.0
-            self.drone_locaion_Array[1] = 0.0
-            self.drone_locaion_Array[2] = 0.0
+        self.drone_locaion_Array : SynchronizedArray = multiprocessing.Array("d", 4, lock=True)
+        self.tello_location_array : SynchronizedArray = multiprocessing.Array("f",8,lock=True)
+        self.drone_locaion_Array[0] = 0.0
+        self.drone_locaion_Array[1] = 0.0
+        self.drone_locaion_Array[2] = 0.0
+        self.drone_locaion_Array[3] = 0.0
+        self.main_drone = drone.DroneObject = drone.DroneObject(self.drone_locaion_Array, self.main_to_gcs_pipe, self.mission_callback)
+        with self.tello_location_array.get_lock():
+            self.tello_location_array[:] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            self.tello_location_array_len = len(self.tello_location_array)
+        self.gcs_connecter = GcsConnector(self.gcs_to_main_pipe, self.main_to_video_pipe, self.drone_locaion_Array, self.tello_location_array)
         print("[INFO] GCS 연결됨")
         print("[INFO] 드론 제어 프로세스 시작됨")
         
+        
+    async def mission_callback(self, command : str) -> None:
+        for key in self.commander.tello_command:
+            self.commander.tello_command[key] = command
+            
         
     async def main(self) -> None:
         self.gcs_connecter.start()
         for i, (name, (ip, port)) in enumerate(self.tello_info.items()):
             self.tello_ips.append(ip)
+            with self.tello_location_array.get_lock():
+                for i in range(0,self.tello_location_array_len,4):
+                    if self.tello_location_array[i] == 0:
+                        self.tello_location_array[i] = float(port)
+                        break
             globals()[f"main_to_tello_pipe_{ip}"], globals()[f"tello_to_main_pipe_{ip}"] = multiprocessing.Pipe()   #메인과 텔로 프로세스를 이어줄 파이프를 만듦.
             self.main_to_tello_pipes[f"tello{i}"] = globals()[f"main_to_tello_pipe_{ip}"] #{"tello1" : main_to_tello_pipe_{ip}}
             p = multiprocessing.Process(target = run_tello_process, args=(name,
@@ -131,7 +150,7 @@ class Main:
                                                                           port, 
                                                                           globals()[f"tello_to_main_pipe_{ip}"],
                                                                           self.drone_locaion_Array,
-                                                                          self.drone_location_lock,
+                                                                          self.tello_location_array
                                                                           )) #각각의 드론에 대해서 프로세스 실행.(만들어진 파이프, 드론 위치 배열, 락도 줌.)
             p.start() #텔로 프로세스 실행.
             self.control_procs.append(p) #컨트롤 프로세스에 해당 프로세스를 추가함
@@ -139,13 +158,21 @@ class Main:
         video_proc = multiprocessing.Process(target=run_video_receiver, args=(self.tello_ips, self.video_to_main_pipe)) 
         video_proc.start()
         print("[INFO] VideoReceiver 프로세스 실행됨")
-        commander = Commander(self.tello_info, self.main_to_tello_pipes) #Commander객체를 선언해서 실행시킴(해당 객체는 메인 프로세스에서 스레드로 실행될 예정.)
-        commander.start()
+        for pipe in self.main_to_tello_pipes:
+            re : str = pipe.recv()
+            if re == 't':
+                continue
+            else:
+                exit(1)
+        self.commander = Commander(self.tello_info, self.main_to_tello_pipes) #Commander객체를 선언해서 실행시킴(해당 객체는 메인 프로세스에서 스레드로 실행될 예정.)
+        self.commander.start()
         print("[INFO] Commander 프로세스 실행됨")
         #임시
         while True:
-            with self.drone_location_lock:
+            with self.drone_locaion_Array.get_lock():
                 self.drone_locaion_Array[0] += 3.5
+                with self.tello_location_array.get_lock():
+                    print(f'drone location : {self.drone_locaion_Array}, \n tello location : {self.tello_location_array}')
             time.sleep(0.1)
                 
             

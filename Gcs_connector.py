@@ -4,18 +4,23 @@ import struct
 import threading
 import time
 from typing import Any, Dict, Optional, Union
-
+from multiprocessing.sharedctypes import SynchronizedArray
 
 class GcsConnector:
-    def __init__(self, pipe: Any, gcs_ip: str = '192.168.0.18', gcs_port: int = 5270, reconnect_delay: Union[int, float] = 5) -> None:
-        self.pipe = pipe
+    def __init__(self, gcs_to_main_pipe: Any, main_to_video_pipe : Any, drone_location_array : SynchronizedArray, tello_location_array : SynchronizedArray, gcs_ip: str = '192.168.0.18', gcs_port: int = 5270, reconnect_delay: Union[int, float] = 5) -> None:
+        self.gcs_pipe = gcs_to_main_pipe
+        self.video_pipe = main_to_video_pipe
         self.gcs_ip: str = gcs_ip
         self.gcs_port: int = gcs_port
         self.reconnect_delay: Union[int, float] = reconnect_delay
         self.lock = threading.Lock()
         self.socket: Optional[socket.socket] = None
         self.cancel_event = threading.Event()
+        self.drone_location_array : SynchronizedArray = drone_location_array #드론 위치 배열 
+        self.tello_location_array : SynchronizedArray = tello_location_array
         self.connect()
+        self.recv_data_thread = threading.Thread(target=self.recv_data, daemon=True)
+        self.send_location_data_thread = threading.Thread(target=self.send_location_data, daemon=True)
 
 
     def connect(self) -> None:
@@ -44,7 +49,7 @@ class GcsConnector:
                 self.socket = None
 
 
-    def send_data(self, data: Dict[str, Any] = {}, message: str = '') -> None:
+    def send_data(self, data: Dict = {}, message: str = '') -> None:
         packet = pickle.dumps({'message': message, 'data': data})
         with self.lock:
             try:
@@ -62,7 +67,7 @@ class GcsConnector:
                 data_byte = self.socket.recv(1024)
                 data : Dict = pickle.loads(data_byte)
                 try:
-                    self.pipe.send(data)
+                    self.gcs_pipe.send(data)
                 except Exception as e:
                     print("Error sending data to main process:", e)
                     break
@@ -70,7 +75,27 @@ class GcsConnector:
             print(f"Receive failed: {e}")
             self.close()
             
+            
+    def send_location_data(self) -> None:
+        try:
+            while True:
+                detection = ''
+                if self.video_pipe.poll():
+                    detection = self.video_pipe.recv()
+                with self.drone_location_array.get_lock():  
+                    drone_location = list(self.drone_location_array)
+                with self.tello_location_array.get_lock():
+                    tello_location = list(self.tello_location_array)
+                data : Dict = {
+                    'detection' : detection,
+                    'drone_location' : drone_location,
+                    'tello_location' : tello_location
+                }
+                self.send_data(message='l', data= data)
+                time.sleep(0.1)
+        except Exception as e:
+            print(f"error send_location_data : {e}")
+
 
     def start(self) -> None:
-        thread = threading.Thread(target=self.recv_data, daemon=True)
-        thread.start()
+        self.recv_data_thread.start()

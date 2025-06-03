@@ -1,19 +1,19 @@
 import socket
 import av
-from typing import List
+from typing import List, Any
 import threading
 import queue
 from Detection_Pipeline import DetectionPipeline
 
 class VideoReceiver:
-    def __init__(self, tello_address: List[str], pipe) -> None:
+    def __init__(self, tello_address: List[str], pipe : Any) -> None:
         self.video_to_main_pipe = pipe #video 프로세스의 입출력 파이프(main과 연결)
         self.tello_address = tello_address #tello 주소(ip식별)
         self.video_socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP 비디오 수신용 소켓 생성
         self.video_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # 포트를 재사용할 수 있도록 설정 (빠른 재시작을 위해 필요)
         self.video_socket.bind(("0.0.0.0", 11111)) # 모든 IP로부터 수신 가능하도록 11111 포트에 바인딩 (Tello의 비디오 스트림 기본 포트)
         self.packet_queues = {ip: queue.Queue(maxsize=5) for ip in self.tello_address} # 각 Tello 드론의 IP에 대한 비디오 패킷 큐 생성 (최대 5개까지 버퍼링)
-        self.detection_pipeline = DetectionPipeline() # 영상 처리 파이프라인 객체 초기화 (예: 객체 탐지, YOLO 등)
+        self.detection_pipeline = DetectionPipeline(self.video_to_main_pipe) # 영상 처리 파이프라인 객체 초기화 (예: 객체 탐지, YOLO 등)
         
     def video_reciver(self) -> None:
         try:

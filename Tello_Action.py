@@ -32,11 +32,11 @@ class Action:
         for part in attitude.split(';'):
             if part.startswith('yaw:'):
                 self.tello_state['yaw'] = int(part.split(':')[1]) - self.tello_state['yaw_error']
-        # height = self.send_command("height?", wait_time) #드론의 높이를 받아옴
-        # if height == 'error':
-        #     return
-        # if height.startswith('height:'):
-        #     self.tello_state['height'] = int(height.split(':')[1])
+        height = self.send_command("height?", wait_time) #드론의 높이를 받아옴
+        if height == 'error':
+            return
+        if height.startswith('height:'):
+            self.tello_state['height'] = int(height.split(':')[1])
 
 
     def takeoff(self, wait_time: float = 10) -> None:
@@ -58,6 +58,10 @@ class Action:
     
     def emergency(self):
         return self.send_command("emergency")  # 즉시 모터 정지
+
+    
+    def up(self, x: int):
+        return self.send_command(f"up {x}")   
 
 
     def stop(self):
@@ -81,23 +85,31 @@ class Action:
         self.send_command(cmd, wait_time = -1)
 
 
-    def double_sin_wave(self, cycles: int = 1,
-                        interval = 0.02,
-                        yaw_turn_speed = 60,
-                        turn_time = 1.0,
-                        hold_time = 4.0,
-                        straight_time = 0.7,
-                        fb_max = 100
-                        ):
+    def double_sin_wave(
+            self,
+            cycles: int = 1,
+            interval: float = 0.02,
+            yaw_turn_speed: float = 60,
+            turn_time: float = 1.0,
+            hold_time: float = 4.0,
+            straight_time: float = 0.7,
+            fb_max: int = 100,
+    ):
         """
         Action 클래스를 사용하는 부드러운 지그재그 비행.
         * 전진 속도 35 cm/s 유지
-        * yaw 속도는 sin 램프로 0→±60→0 deg/ss
+        * yaw 속도는 sin 램프로 0→±60→0 deg/s
         * 진폭 ≈ ±1.5 m
+        * **추가**: 적분으로 (x, y) 위치 추정 → self.tello_state['location'] 저장
         """
-        yaw_deg = 0.0 
-        fb_speed = self.compute_drone_speed()
+        import math, time
+
+        fb_speed = self.compute_drone_speed()            # cm/s
         print(f"[INFO] 🛫  smooth-yaw double_sin_wave: fb_speed = {fb_speed} cm/s")
+
+        # (x, y) 시작 좌표. 없으면 원점으로 초기화
+        [pos_x, pos_y] = self.get_tello_location()
+
         segments = [
             (-yaw_turn_speed, turn_time),   # 왼쪽으로 서서히
             (0,                 hold_time),
@@ -106,7 +118,7 @@ class Action:
             ( yaw_turn_speed,   turn_time), # 오른쪽으로 서서히
             (0,                 hold_time),
             (-yaw_turn_speed,   turn_time), # 가운데 복귀
-            (0,                 straight_time)
+            (0,                 straight_time),
         ]
 
         print("[INFO] 🛫  smooth-yaw double_sin_wave 시작")
@@ -114,30 +126,53 @@ class Action:
             for target_yaw, seg_t in segments:
                 steps = int(seg_t / interval)
 
-                if target_yaw != 0:  # --- TURN (sin 램프) ---
+                # 현재 기체 상태 한 번 읽어 둠
+                self.update_state()
+                yaw_deg = self.tello_state["yaw"]        # 현재 헤딩(도)
+
+                if target_yaw != 0:                      # --- TURN 구간 ---
                     sign = 1 if target_yaw > 0 else -1
-                    vmax = abs(target_yaw)
+                    vmax = abs(target_yaw)               # 최대 yaw 속도(deg/s)
+
                     for i in range(steps):
-                        # 1) 실제 yaw 업데이트
-                        self.update_state()
-                        current_yaw = self.tello_state['yaw']
-                        phase = i / max(1, steps - 1)  # 0→1
-                        yaw_rc = sign * vmax * math.sin(math.pi * phase)
-                        yaw_rad = math.radians(current_yaw)
-                        fb_cmd = int(min(fb_max, fb_speed / max(1e-5, abs(math.cos(yaw_rad)))))
+                        # (1) sin 램프로 목표 yaw 속도
+                        phase   = i / max(1, steps - 1)          # 0 → 1
+                        yaw_rc  = sign * vmax * math.sin(math.pi * phase)  # deg/s
+
+                        # (2) 적분해 yaw_deg 갱신
+                        yaw_deg += yaw_rc * interval             # deg
+
+                        # (3) fb_cmd 계산
+                        yaw_rad = math.radians(yaw_deg)
+                        fb_cmd  = int(min(fb_max,
+                                        fb_speed / max(1e-5, abs(math.cos(yaw_rad)))))
+
+                        # (4) RC 전송
                         self.rc(0, fb_cmd, 0, int(yaw_rc))
                         time.sleep(interval)
 
-                else:
+                        # (5) 위치 적분 (cm)
+                        distance = fb_cmd * interval             # 이동 거리
+                        pos_x   += distance * math.cos(yaw_rad)  # Δx
+                        pos_y   += distance * math.sin(yaw_rad)  # Δy
+                        self.update_tello_location(pos_x, pos_y, yaw_deg)
+
+                else:                                   # --- 직선 전진 구간 ---
                     for _ in range(steps):
-                        self.update_state()
-                        current_yaw = self.tello_state['yaw']
-                        yaw_rad = math.radians(current_yaw)
-                        fb_cmd = int(min(fb_max, fb_speed / max(1e-5, abs(math.cos(yaw_rad)))))
+                        yaw_rad = math.radians(yaw_deg)
+                        fb_cmd  = int(min(fb_max,
+                                        fb_speed / max(1e-5, abs(math.cos(yaw_rad)))))
                         self.rc(0, fb_cmd, 0, 0)
                         time.sleep(interval)
-                        
+
+                        distance = fb_cmd * interval
+                        pos_x   += distance * math.cos(yaw_rad)
+                        pos_y   += distance * math.sin(yaw_rad)
+                        self.update_tello_location(pos_x, pos_y, yaw_deg)
+
+        print(f"[INFO] ✅  flight finished — final location ≈ [{pos_x:.1f}, {pos_y:.1f}] cm")                  
         self.tello_to_main_pipe.send(('double_sin_wave','ok'))
+               
                
     def readjust_position(self,
                       side: str,            # 고장나지 않은 드론

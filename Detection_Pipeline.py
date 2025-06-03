@@ -1,9 +1,11 @@
 import numpy as np
 import cv2
 from Detection_Model import YoloImageDetector
+from typing import Any
 
 class DetectionPipeline:
-    def __init__(self) -> None:
+    def __init__(self, pipe : Any) -> None:
+        self.pipe = pipe
         #self.detector = YoloImageDetector() #객체 탐지 클래스를 선언
         pass
     
@@ -12,7 +14,11 @@ class DetectionPipeline:
     
     
     def detect_objects(self, frame: np.ndarray, source_ip: str) -> None:
-        #self.detector.predict_image(frame, source_ip) #객체 탐지지
+        #x, y, ret = self.detector.predict_image(frame, source_ip) #객체 탐지지
+        #if ret:
+        #    self.pipe.send((str(x),str(y)))
+            
+            
         cv2.imshow(source_ip, frame)
         cv2.waitKey(1)
     
