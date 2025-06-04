@@ -86,23 +86,17 @@ class Action:
 
 
     def double_sin_wave(
-            self,
-            cycles: int = 1,
-            interval: float = 0.02,
-            yaw_turn_speed: float = 60,
-            turn_time: float = 1.0,
-            hold_time: float = 4.0,
-            straight_time: float = 0.7,
-            fb_max: int = 100,
+        self,
+        cycles: int = 1,
+        interval: float = 0.02,
+        yaw_turn_speed: float = 60,
+        turn_time: float = 1.0,
+        hold_time_1: float = 2.0,
+        hold_time_2: float = 4.0,
+        straight_time: float = 0.7,
+        fb_max: int = 100,
+        name: str = None
     ):
-        """
-        Action 클래스를 사용하는 부드러운 지그재그 비행.
-        * 전진 속도 35 cm/s 유지
-        * yaw 속도는 sin 램프로 0→±60→0 deg/s
-        * 진폭 ≈ ±1.5 m
-        * **추가**: 적분으로 (x, y) 위치 추정 → self.tello_state['location'] 저장
-        """
-        import math, time
 
         fb_speed = self.compute_drone_speed()            # cm/s
         print(f"[INFO] 🛫  smooth-yaw double_sin_wave: fb_speed = {fb_speed} cm/s")
@@ -110,16 +104,36 @@ class Action:
         # (x, y) 시작 좌표. 없으면 원점으로 초기화
         [pos_x, pos_y] = self.get_tello_location()
 
-        segments = [
-            (-yaw_turn_speed, turn_time),   # 왼쪽으로 서서히
-            (0,                 hold_time),
-            ( yaw_turn_speed,   turn_time), # 가운데 복귀
-            (0,                 straight_time),
-            ( yaw_turn_speed,   turn_time), # 오른쪽으로 서서히
-            (0,                 hold_time),
-            (-yaw_turn_speed,   turn_time), # 가운데 복귀
-            (0,                 straight_time),
-        ]
+        if name == "tello0": #tello0은 메인드론 기준 왼쪽에 배치되고, 왼쪽으로 먼저 움직임
+            segments = [
+                (-yaw_turn_speed, turn_time),   # 왼쪽부터 시작
+                (0,                 hold_time_1),
+                ( yaw_turn_speed,   turn_time),
+                (0,                 straight_time),
+                ( yaw_turn_speed,   turn_time),
+                (0,                 hold_time_2),
+                (-yaw_turn_speed,   turn_time),
+                (0,                 straight_time),
+                (-yaw_turn_speed,   turn_time),
+                (0,                 hold_time_1),
+                ( yaw_turn_speed,   turn_time)
+            ]
+        elif name == "tello1": #tello1은 메인드론 기준 오른쪽에 배치되고, 오른쪽으로 먼저 움직임
+            segments = [
+                ( yaw_turn_speed,   turn_time),  # 오른쪽부터 시작
+                (0,                 hold_time_1),
+                (-yaw_turn_speed,   turn_time),
+                (0,                 straight_time),
+                (-yaw_turn_speed,   turn_time),
+                (0,                 hold_time_2),
+                ( yaw_turn_speed,   turn_time),
+                (0,                 straight_time),
+                ( yaw_turn_speed,   turn_time),
+                (0,                 hold_time_1),
+                (-yaw_turn_speed,   turn_time)
+            ]
+        else:
+            raise ValueError(f"[ERROR] Unknown drone_id: {name}")
 
         print("[INFO] 🛫  smooth-yaw double_sin_wave 시작")
         for _ in range(cycles):
@@ -174,80 +188,148 @@ class Action:
         self.tello_to_main_pipe.send(('double_sin_wave','ok'))
                
                
-    def readjust_position(self,
-                      side: str,            # 고장나지 않은 드론
-                      diag_x: int = 100,    # x 성분(cm)
-                      y_offset: int = 200,  # 메인 기준 초기 |y| 거리(cm)
-                      shift_speed: int = 80,# go 속도 10~100 cm/s
-                      settle: float = 0.5):
+    def readjust_position(
+        self,
+        name: str = None,                  # "tello0"(왼쪽) | "tello1"(오른쪽)
+        angle_deg: float = 15,      # 가로(y)축과 이루는 각도
+        y_fixed: int = 1000,        # y축 이동량(cm) = 10 m 고정
+        shift_speed: int = 80,      # go 속도 10–100 cm/s
+        diag_x: int = 100,          # 기존 보정용 파라미터(그대로 유지)
+        y_offset: int = 200,
+        settle: float = 0.5
+    ):
         """
-        살아남은 드론(tello0 또는 tello1)을
-        · 대각선 (x=diag_x , y=0) 위치로 go 이동
-        · 헤딩은 그대로 유지
+        살아남은 드론을 메인 쪽으로 재배치:
+        1) 가로(y)축으로 ±10 m 이동하면서 angle_deg° 대각선 진입
+        (y 고정 → x = y * tan(angle))
+        2) 이후 기존 로직대로 (diag_x, -start_y) 위치로 go 이동
         """
 
-        # ── 좌표계: +y = 오른쪽, -y = 왼쪽 ──────────────────────────
-        # tello0 ⇒ 시작 y = -y_offset   (왼쪽)
-        # tello1 ⇒ 시작 y = +y_offset   (오른쪽)
-        start_y = -y_offset if side == "tello0" else y_offset
+        # ──────────────────────────────
+        # 1️⃣  y축 ±1000 cm + 대각선 진입
+        # ──────────────────────────────
+        sign_y = 1 if name == "tello0" else -1      # tello0: +y(→) / tello1: –y(←)
+        dy = sign_y * y_fixed                       # ±1000 cm
+        dx = int(abs(dy) * math.tan(math.radians(angle_deg)))  # 항상 전진(+) 방향
+        total_dist = math.hypot(dx, dy)
 
-        # 센터로 가려면 Δy = -start_y
-        go_x = diag_x
-        go_y = -start_y
+        print(f"[INFO] {name}: y={dy}cm, x={dx}cm (angle={angle_deg}°) 대각선 이동")
+        self.go(dx, dy, 0, shift_speed)             # go(x=전진, y=좌우, z, speed)
+        time.sleep(total_dist / shift_speed + settle)
 
-        # go 명령 (x, y, z, speed)
+        # ──────────────────────────────
+        # 2️⃣  기존 대각선 (diag_x, -start_y) 보정
+        # ──────────────────────────────
+        start_y = -y_offset if name == "tello0" else y_offset
+        go_x, go_y = diag_x, -start_y
+
+        print(f"[INFO] {name}: 최종 위치 재조정 → x={go_x}, y={go_y}")
         self.go(go_x, go_y, 0, shift_speed)
-
-        # 이동 시간 = √(x²+y²)/speed  + 여유
-        move_time = math.hypot(go_x, go_y) / shift_speed + settle
-        time.sleep(move_time)
+        time.sleep(math.hypot(go_x, go_y) / shift_speed + settle)
         
         
-    def solo_sin_wave(self,
-                      disp_amp: float = 280.0,   # y 변위 진폭(±cm) = 280
-                      fb_speed:  int   = 35,     # 전진 속도(cm/s) = 35
-                      interval:  float = 0.1,
-                      side: str = "tello0", 
-                      k_p: float = 1.8):
-        """
-        서브 드론 단독 운영 시 넓은 영역(±280cm) 커버용 사인파 1사이클.
-        - side  : "tello0" → +sin,  "tello1" → -sin
-        - k_p   : 헤딩 추종 P 게인 (기본 1.8)
-        """
+    def solo_sin_wave(
+        self,
+        cycles: int = 1,
+        interval: float = 0.02,
+        yaw_turn_speed: float = 100,
+        turn_time: float = 1.0,
+        hold_time_1: float = 4.0,
+        hold_time_2: float = 8.0,
+        straight_time: float = 0.7,
+        fb_max: int = 100,
+        name: str = None
+    ):
 
-        sign = 1 if side == "tello0" else -1
+        fb_speed = self.compute_drone_speed()            # cm/s
+        print(f"[INFO] 🛫  smooth-yaw solo_sin_wave: fb_speed = {fb_speed} cm/s")
 
-        # ── 주기 계산: v_y_peak ≤ 100 cm/s 조건 ──────────────────
-        #   v_y_peak = A * ω  ≤ 100  →  ω = 2π/T  →  T = 2πA / 100
-        period = (2 * math.pi * disp_amp) / 100.0        # ≈ 17.59 s
-        omega  = 2 * math.pi / period
+        # (x, y) 시작 좌표. 없으면 원점으로 초기화
+        [pos_x, pos_y] = self.get_tello_location()
 
-        start_t = time.time()
-        est_yaw = 0.0
+        if name == "tello0": #tello0은 메인드론 기준 왼쪽에 배치되고, 왼쪽으로 먼저 움직임
+            segments = [
+                (-yaw_turn_speed, turn_time),   # 왼쪽부터 시작
+                (0,                 hold_time_1),
+                ( yaw_turn_speed,   turn_time),
+                (0,                 straight_time),
+                ( yaw_turn_speed,   turn_time),
+                (0,                 hold_time_2),
+                (-yaw_turn_speed,   turn_time),
+                (0,                 straight_time),
+                (-yaw_turn_speed,   turn_time),
+                (0,                 hold_time_1),
+                ( yaw_turn_speed,   turn_time)
+            ]
+        elif name == "tello1": #tello1은 메인드론 기준 오른쪽에 배치되고, 오른쪽으로 먼저 움직임
+            segments = [
+                ( yaw_turn_speed,   turn_time),  # 오른쪽부터 시작
+                (0,                 hold_time_1),
+                (-yaw_turn_speed,   turn_time),
+                (0,                 straight_time),
+                (-yaw_turn_speed,   turn_time),
+                (0,                 hold_time_2),
+                ( yaw_turn_speed,   turn_time),
+                (0,                 straight_time),
+                ( yaw_turn_speed,   turn_time),
+                (0,                 hold_time_1),
+                (-yaw_turn_speed,   turn_time)
+            ]
+        else:
+            raise ValueError(f"[ERROR] Unknown drone_id: {name}")
 
-        while (t := time.time() - start_t) <= period:
-            lr_speed = sign * disp_amp * omega * math.cos(omega * t)
-            lr       = int(max(-100, min(100, lr_speed)))
+        print("[INFO] 🛫  smooth-yaw double_sin_wave 시작")
+        for _ in range(cycles):
+            for target_yaw, seg_t in segments:
+                steps = int(seg_t / interval)
 
-            tgt_yaw = math.degrees(math.atan2(lr, fb_speed))
-            err     = ((tgt_yaw - est_yaw + 180) % 360) - 180   # wrap‑to‑±180
-            d       = int(max(-100, min(100, k_p * err)))
+                # 현재 기체 상태 한 번 읽어 둠
+                self.update_state()
+                yaw_deg = self.tello_state["yaw"]        # 현재 헤딩(도)
 
-            self.rc(lr, fb_speed, 0, d)
+                if target_yaw != 0:                      # --- TURN 구간 ---
+                    sign = 1 if target_yaw > 0 else -1
+                    vmax = abs(target_yaw)               # 최대 yaw 속도(deg/s)
 
-            est_yaw = (est_yaw + d * interval + 180) % 360 - 180
-            time.sleep(interval)
+                    for i in range(steps):
+                        # (1) sin 램프로 목표 yaw 속도
+                        phase   = i / max(1, steps - 1)          # 0 → 1
+                        yaw_rc  = sign * vmax * math.sin(math.pi * phase)  # deg/s
 
-        # ── 호버 → 정면 복귀 ──────────────────────────────────────
-        self.rc(0, 0, 0, 0)
-        time.sleep(0.2)
+                        # (2) 적분해 yaw_deg 갱신
+                        yaw_deg += yaw_rc * interval             # deg
 
-        if abs(est_yaw) > 2:
-            rot = int(round(abs(est_yaw)))
-            (self.cw if est_yaw > 0 else self.ccw)(rot)
-            time.sleep(rot / 100 + 0.3)
+                        # (3) fb_cmd 계산
+                        yaw_rad = math.radians(yaw_deg)
+                        fb_cmd  = int(min(fb_max,
+                                        fb_speed / max(1e-5, abs(math.cos(yaw_rad)))))
 
-        self.rc(0, 0, 0, 0)
+                        # (4) RC 전송
+                        self.rc(0, fb_cmd, 0, int(yaw_rc))
+                        time.sleep(interval)
+
+                        # (5) 위치 적분 (cm)
+                        distance = fb_cmd * interval             # 이동 거리
+                        pos_x   += distance * math.cos(yaw_rad)  # Δx
+                        pos_y   += distance * math.sin(yaw_rad)  # Δy
+                        self.update_tello_location(pos_x, pos_y, yaw_deg)
+
+                else:                                   # --- 직선 전진 구간 ---
+                    for _ in range(steps):
+                        yaw_rad = math.radians(yaw_deg)
+                        fb_cmd  = int(min(fb_max,
+                                        fb_speed / max(1e-5, abs(math.cos(yaw_rad)))))
+                        self.rc(0, fb_cmd, 0, 0)
+                        time.sleep(interval)
+
+                        distance = fb_cmd * interval
+                        pos_x   += distance * math.cos(yaw_rad)
+                        pos_y   += distance * math.sin(yaw_rad)
+                        self.update_tello_location(pos_x, pos_y, yaw_deg)
+
+        print(f"[INFO] ✅  flight finished — final location ≈ [{pos_x:.1f}, {pos_y:.1f}] cm")                  
+        self.tello_to_main_pipe.send(('solo_sin_wave','ok'))
+        
 
 
 

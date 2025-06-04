@@ -36,7 +36,7 @@ class Commander:
     #아래와 같은 형식으로 명령을 주면됨.(Action class에서 제대로 만들어져야함.)
     def situation_1(self, name : str, pipe : Any) -> None:
         print(f"{name} situation_1 호출")
-        pipe.send(("double_sin_wave", (), {})) 
+        pipe.send(("double_sin_wave", (), {"name": name})) #드론 이름이 들어감
         
         
     def situation_2(self, death : str, name : str, pipe : Any) -> None:
@@ -45,14 +45,14 @@ class Commander:
 
         if not self.readjust:
             # 1) 위치 재조정 명령 전송
-            pipe.send(("readjust_position", (), {"side": survivor}))
+            pipe.send(("readjust_position", (), {"name": survivor}))
             # 2) readjust 완료 ACK 대기 (최대 5 s)
             if pipe.poll(5.0):
                 _ = pipe.recv()
             self.readjust = True
 
         # 3) 솔로 사인웨이브 시작
-        pipe.send(("solo_sin_wave", (), {"side": survivor}))
+        pipe.send(("solo_sin_wave", (), {"name": survivor}))
 
     #처음은 드론 두 대만 사용할 것이므로 드론이 2개 일 때, 1개 일 때만 상황이 주어짐
     # def situation_3(self):
