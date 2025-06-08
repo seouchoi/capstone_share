@@ -120,21 +120,22 @@ class Main:
         self.drone_locaion_Array[1] = 0.0
         self.drone_locaion_Array[2] = 0.0
         self.drone_locaion_Array[3] = 0.0
-        self.main_drone = drone.DroneObject = drone.DroneObject(self.drone_locaion_Array, self.main_to_gcs_pipe, self.mission_callback)
         with self.tello_location_array.get_lock():
             self.tello_location_array[:] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
             self.tello_location_array_len = len(self.tello_location_array)
         self.gcs_connecter = GcsConnector(self.gcs_to_main_pipe, self.main_to_video_pipe, self.drone_locaion_Array, self.tello_location_array)
+        
         print("[INFO] GCS 연결됨")
         print("[INFO] 드론 제어 프로세스 시작됨")
         
         
-    async def mission_callback(self, command : str) -> None:
+    def mission_callback(self, command : str) -> None:
         for key in self.commander.tello_command:
             self.commander.tello_command[key] = command
             
         
     async def main(self) -> None:
+        self.main_drone = drone.DroneObject(self.drone_locaion_Array, self.main_to_gcs_pipe, self.mission_callback)
         self.gcs_connecter.start()
         for i, (name, (ip, port)) in enumerate(self.tello_info.items()):
             self.tello_ips.append(ip)
@@ -158,7 +159,7 @@ class Main:
         video_proc = multiprocessing.Process(target=run_video_receiver, args=(self.tello_ips, self.video_to_main_pipe)) 
         video_proc.start()
         print("[INFO] VideoReceiver 프로세스 실행됨")
-        for pipe in self.main_to_tello_pipes:
+        for _, pipe in self.main_to_tello_pipes.items():
             re : str = pipe.recv()
             if re == 't':
                 continue
@@ -167,6 +168,7 @@ class Main:
         self.commander = Commander(self.tello_info, self.main_to_tello_pipes) #Commander객체를 선언해서 실행시킴(해당 객체는 메인 프로세스에서 스레드로 실행될 예정.)
         self.commander.start()
         print("[INFO] Commander 프로세스 실행됨")
+        asyncio.run(self.main_drone.drone_action())
         #임시
         while True:
             with self.drone_locaion_Array.get_lock():
@@ -186,6 +188,6 @@ class Main:
                 p.terminate()
         
 if __name__ == "__main__":
-    multiprocessing.set_start_method("spawn") #윈도우 호환 멀티프로세싱 실행.
+    #multiprocessing.set_start_method("spawn") #윈도우 호환 멀티프로세싱 실행.
     main = Main()
     asyncio.run(main.main()) 

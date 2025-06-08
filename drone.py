@@ -93,17 +93,32 @@ class DroneObject:
             try:
                 if self.end:
                     return
-                if self.main_to_gcs_pipe.poll():
-                    command = self.main_to_gcs_pipe.recv()
-                    if command == 'start':
-                        self.mission_callback('takeoff')
-                        await asyncio.sleep(3)
-                        
-                    if command == 'end':
-                        self.mission_callback('land')
-                        await self.drone.action.land()
-                        await asyncio.sleep(5)
-                        exit(1)
+                command = self.main_to_gcs_pipe.recv()
+                if command == 'start':
+                    self.mission_callback('takeoff')
+                    await asyncio.sleep(3)
+                    self.mission_callback('up')
+                    await asyncio.sleep(10)
+                    await drone.action.takeoff()
+                    await asyncio.sleep(5)
+                    await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
+                    await drone.offboard.start()
+                    await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.35, 0.0, 0.0, 0.0))
+                    await asyncio.sleep(0.5)
+                    self.mission_callback('ready')
+                    await asyncio.sleep(29.5)
+                    await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
+                    await drone.offboard.stop()
+                    await drone.action.land()
+                    await asyncio.sleep(5)
+                    await drone.action.disarm()
+                    
+                if command == 'end':
+                    self.mission_callback('land')
+                    await self.drone.action.land()
+                    await asyncio.sleep(5)
+                    await drone.action.disarm()
+                    exit(1)
                 
             except Exception as e:
                 print(f'drone_action : {str(e)}')
@@ -111,6 +126,9 @@ class DroneObject:
     async def command_main(self) -> None:
         self.drone = System()
         await self.connect_drone()
-        command_thread : threading.Thread = threading.Thread(target=self.update_drone_state)
-        command_thread.daemon=True
-        command_thread.start()
+        state_task  = asyncio.create_task(self.update_drone_state())
+        action_task = asyncio.create_task(self.drone_action())
+        await asyncio.wait(
+            [state_task, action_task],
+            return_when=asyncio.FIRST_COMPLETED
+        )

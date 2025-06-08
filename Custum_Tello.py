@@ -57,7 +57,7 @@ class Tello(Action): #Action클래스를 상속받는 Tello 객체.
     def compute_drone_speed(self) -> float:    #드론의 속도를 계산하는 함수
         #now = time.time()
         location = self.get_drone_location() #드론의 위치를 가져옴
-        return location[3] # from drone's telemetry
+        return location[3] + 10 # from drone's telemetry
         #speed = math.sqrt((location[0] - self.latest_drone_location['location'][0])**2 + (location[1] - self.latest_drone_location['location'][1])**2) / (now - self.latest_drone_location['time']) #드론의 속도를 계산함
         #self.latest_drone_location['location'] = location #드론의 위치를 저장함
         #self.latest_drone_location['time'] = now #드론의 시간을 저장함
@@ -104,7 +104,7 @@ class Tello(Action): #Action클래스를 상속받는 Tello 객체.
             while True:
                 data, _ = self.socket_tello.recvfrom(1518)     # 소켓에서 데이터를 읽어 큐에 저장
                 self.response_que.put(str(data.decode(encoding="UTF-8"))) #응답을 받아서 응답 큐에 저장
-                print(f"[{self.tello_address}] {data.decode(encoding='UTF-8')}")
+                #print(f"[{self.tello_address}] {data.decode(encoding='UTF-8')}")
         except Exception as e:
             print(e)
                 
@@ -159,6 +159,6 @@ class Tello(Action): #Action클래스를 상속받는 Tello 객체.
             try:
                 func = getattr(self, func_name) #self(tello 객체)에서 func_name의 동작을 하도록 함. ex)tello.forward(), tello.takeoff()
                 func(*args, **kwargs) #함수를 실행할 때 인자를 받는 부분. 
-                print(f"[{self.tello_address}] {func_name} 실행됨")
+                #print(f"[{self.tello_address}] {func_name} 실행됨")
             except Exception as e:
                 print(f"[{self.tello_address}] {func_name} 실행 오류: {e}")  

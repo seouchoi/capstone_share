@@ -67,16 +67,16 @@ class Commander:
         start : bool = False
         while True:
             state : bool = self.is_alive(name, pipe)
-            print(f"{name} state: {state}")
+            #print(f"{name} state: {state}")
             if state:
                 if self.tello_command[name] != '':
-                    print(f"{name} command: {self.tello_command[name]}")
+                    #print(f"{name} command: {self.tello_command[name]}")
                     if self.tello_command[name] == 'ready':
                         start = True
                         continue
                     pipe.send((self.tello_command[name], (), {}))
                     response : Tuple = self.wait_for_respone(pipe, 12)
-                    print(f"{name} response: {response}")
+                    #print(f"{name} response: {response}")
                     self.tello_command[name] = ''
                     if response[0] == 'takeoff' and response[1] == 'ok':
                         takeoff = True

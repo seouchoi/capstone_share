@@ -16,6 +16,15 @@ def send_message(client_socket, address):
             print(type(e))
             break
         
+def recv_message(client_socket, address):
+    while True:
+        try:
+            data_byte = client_socket.recv(1024)
+            data : str = pickle.loads(data_byte)
+            print(f'recv data : {data}')
+        except Exception as e:
+            print(f'recv_message error : {e}')
+        
 def close_wait(server_socket):
     image = np.ones((10, 10, 3), dtype=np.uint8) * 255
     cv2.imshow("", image)

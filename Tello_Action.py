@@ -1,3 +1,4 @@
+
 import time
 import math
 
@@ -60,9 +61,11 @@ class Action:
         return self.send_command("emergency")  # 즉시 모터 정지
 
     
-    def up(self, x: int):
-        return self.send_command(f"up {x}")   
-
+    def up(self, x: int = 500, wait_time: float = 10):
+        self.empty_response()
+        res = self.send_command(f"up {x}", wait_time)   
+        self.tello_to_main_pipe.send(('takeoff', res))
+        
 
     def stop(self):
         return self.send_command("stop")       # 공중 정지 (호버링)

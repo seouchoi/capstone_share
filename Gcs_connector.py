@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Union
 from multiprocessing.sharedctypes import SynchronizedArray
 
 class GcsConnector:
-    def __init__(self, gcs_to_main_pipe: Any, main_to_video_pipe : Any, drone_location_array : SynchronizedArray, tello_location_array : SynchronizedArray, gcs_ip: str = '192.168.0.18', gcs_port: int = 5270, reconnect_delay: Union[int, float] = 5) -> None:
+    def __init__(self, gcs_to_main_pipe: Any, main_to_video_pipe : Any, drone_location_array : SynchronizedArray, tello_location_array : SynchronizedArray, gcs_ip: str = '192.168.0.101', gcs_port: int = 5270, reconnect_delay: Union[int, float] = 5) -> None:
         self.gcs_pipe = gcs_to_main_pipe
         self.video_pipe = main_to_video_pipe
         self.gcs_ip: str = gcs_ip
@@ -99,3 +99,4 @@ class GcsConnector:
 
     def start(self) -> None:
         self.recv_data_thread.start()
+        self.send_location_data_thread.start()

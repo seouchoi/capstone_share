@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from Detection_Model import YoloImageDetector
+#from Detection_Model import YoloImageDetector
 from typing import Any
 
 class DetectionPipeline:
