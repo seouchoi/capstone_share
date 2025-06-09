@@ -73,6 +73,7 @@ class Commander:
                     #print(f"{name} command: {self.tello_command[name]}")
                     if self.tello_command[name] == 'ready':
                         start = True
+                        self.tello_command[name] = ''
                         continue
                     pipe.send((self.tello_command[name], (), {}))
                     response : Tuple = self.wait_for_respone(pipe, 12)
@@ -80,6 +81,7 @@ class Commander:
                     self.tello_command[name] = ''
                     if response[0] == 'takeoff' and response[1] == 'ok':
                         takeoff = True
+                    self.tello_command[name] = ''
                     time.sleep(3)
                     continue
                 elif takeoff and start:

@@ -89,106 +89,106 @@ class Action:
 
 
     def double_sin_wave(
-        self,
-        cycles: int = 1,
-        interval: float = 0.02,
-        yaw_turn_speed: float = 60,
-        turn_time: float = 1.0,
-        hold_time_1: float = 2.0,
-        hold_time_2: float = 4.0,
-        straight_time: float = 0.7,
-        fb_max: int = 100,
-        name: str = None
-    ):
+            self,
+            cycles: int = 1,
+            interval: float = 0.02,
+            yaw_turn_speed: float = 60,
+            turn_time: float = 1.0,
+            hold_time_1: float = 2.0,
+            hold_time_2: float = 4.0,
+            straight_time: float = 0.7,
+            fb_max: int = 100,
+            name: str = None
+        ):
 
-        fb_speed = self.compute_drone_speed()            # cm/s
-        print(f"[INFO] 🛫  smooth-yaw double_sin_wave: fb_speed = {fb_speed} cm/s")
+            fb_speed = self.compute_drone_speed()            # cm/s
+            print(f"[INFO] 🛫  smooth-yaw double_sin_wave: fb_speed = {fb_speed} cm/s")
 
-        # (x, y) 시작 좌표. 없으면 원점으로 초기화
-        [pos_x, pos_y] = self.get_tello_location()
+            # (x, y) 시작 좌표. 없으면 원점으로 초기화
+            [pos_x, pos_y] = self.get_tello_location()
 
-        if name == "tello0": #tello0은 메인드론 기준 왼쪽에 배치되고, 왼쪽으로 먼저 움직임
-            segments = [
-                (-yaw_turn_speed, turn_time),   # 왼쪽부터 시작
-                (0,                 hold_time_1),
-                ( yaw_turn_speed,   turn_time),
-                (0,                 straight_time),
-                ( yaw_turn_speed,   turn_time),
-                (0,                 hold_time_2),
-                (-yaw_turn_speed,   turn_time),
-                (0,                 straight_time),
-                (-yaw_turn_speed,   turn_time),
-                (0,                 hold_time_1),
-                ( yaw_turn_speed,   turn_time)
-            ]
-        elif name == "tello1": #tello1은 메인드론 기준 오른쪽에 배치되고, 오른쪽으로 먼저 움직임
-            segments = [
-                ( yaw_turn_speed,   turn_time),  # 오른쪽부터 시작
-                (0,                 hold_time_1),
-                (-yaw_turn_speed,   turn_time),
-                (0,                 straight_time),
-                (-yaw_turn_speed,   turn_time),
-                (0,                 hold_time_2),
-                ( yaw_turn_speed,   turn_time),
-                (0,                 straight_time),
-                ( yaw_turn_speed,   turn_time),
-                (0,                 hold_time_1),
-                (-yaw_turn_speed,   turn_time)
-            ]
-        else:
-            raise ValueError(f"[ERROR] Unknown drone_id: {name}")
+            if name == "tello0": #tello0은 메인드론 기준 왼쪽에 배치되고, 왼쪽으로 먼저 움직임
+                segments = [
+                    (-yaw_turn_speed, turn_time),   # 왼쪽부터 시작
+                    (0,                 hold_time_1),
+                    ( yaw_turn_speed,   turn_time),
+                    (0,                 straight_time),
+                    ( yaw_turn_speed,   turn_time),
+                    (0,                 hold_time_2),
+                    (-yaw_turn_speed,   turn_time),
+                    (0,                 straight_time),
+                    (-yaw_turn_speed,   turn_time),
+                    (0,                 hold_time_1),
+                    ( yaw_turn_speed,   turn_time)
+                ]
+            elif name == "tello1": #tello1은 메인드론 기준 오른쪽에 배치되고, 오른쪽으로 먼저 움직임
+                segments = [
+                    ( yaw_turn_speed,   turn_time),  # 오른쪽부터 시작
+                    (0,                 hold_time_1),
+                    (-yaw_turn_speed,   turn_time),
+                    (0,                 straight_time),
+                    (-yaw_turn_speed,   turn_time),
+                    (0,                 hold_time_2),
+                    ( yaw_turn_speed,   turn_time),
+                    (0,                 straight_time),
+                    ( yaw_turn_speed,   turn_time),
+                    (0,                 hold_time_1),
+                    (-yaw_turn_speed,   turn_time)
+                ]
+            else:
+                raise ValueError(f"[ERROR] Unknown drone_id: {name}")
 
-        print("[INFO] 🛫  smooth-yaw double_sin_wave 시작")
-        for _ in range(cycles):
-            for target_yaw, seg_t in segments:
-                steps = int(seg_t / interval)
+            print("[INFO] 🛫  smooth-yaw double_sin_wave 시작")
+            for _ in range(cycles):
+                for target_yaw, seg_t in segments:
+                    steps = int(seg_t / interval)
 
-                # 현재 기체 상태 한 번 읽어 둠
-                self.update_state()
-                yaw_deg = self.tello_state["yaw"]        # 현재 헤딩(도)
+                    # 현재 기체 상태 한 번 읽어 둠
+                    self.update_state()
+                    yaw_deg = self.tello_state["yaw"]        # 현재 헤딩(도)
 
-                if target_yaw != 0:                      # --- TURN 구간 ---
-                    sign = 1 if target_yaw > 0 else -1
-                    vmax = abs(target_yaw)               # 최대 yaw 속도(deg/s)
+                    if target_yaw != 0:                      # --- TURN 구간 ---
+                        sign = 1 if target_yaw > 0 else -1
+                        vmax = abs(target_yaw)               # 최대 yaw 속도(deg/s)
 
-                    for i in range(steps):
-                        # (1) sin 램프로 목표 yaw 속도
-                        phase   = i / max(1, steps - 1)          # 0 → 1
-                        yaw_rc  = sign * vmax * math.sin(math.pi * phase)  # deg/s
+                        for i in range(steps):
+                            # (1) sin 램프로 목표 yaw 속도
+                            phase   = i / max(1, steps - 1)          # 0 → 1
+                            yaw_rc  = sign * vmax * math.sin(math.pi * phase)  # deg/s
 
-                        # (2) 적분해 yaw_deg 갱신
-                        yaw_deg += yaw_rc * interval             # deg
+                            # (2) 적분해 yaw_deg 갱신
+                            yaw_deg += yaw_rc * interval             # deg
 
-                        # (3) fb_cmd 계산
-                        yaw_rad = math.radians(yaw_deg)
-                        fb_cmd  = int(min(fb_max,
-                                        fb_speed / max(1e-5, abs(math.cos(yaw_rad)))))
+                            # (3) fb_cmd 계산
+                            yaw_rad = math.radians(yaw_deg)
+                            fb_cmd  = int(min(fb_max,
+                                            fb_speed / max(1e-5, abs(math.cos(yaw_rad)))))
 
-                        # (4) RC 전송
-                        self.rc(0, fb_cmd, 0, int(yaw_rc))
-                        time.sleep(interval)
+                            # (4) RC 전송
+                            self.rc(0, fb_cmd, 0, int(yaw_rc))
+                            time.sleep(interval)
 
-                        # (5) 위치 적분 (cm)
-                        distance = fb_cmd * interval             # 이동 거리
-                        pos_x   += distance * math.cos(yaw_rad)  # Δx
-                        pos_y   += distance * math.sin(yaw_rad)  # Δy
-                        self.update_tello_location(pos_x, pos_y, yaw_deg)
+                            # (5) 위치 적분 (cm)
+                            distance = fb_cmd * interval             # 이동 거리
+                            pos_x   += distance * math.cos(yaw_rad)  # Δx
+                            pos_y   += distance * math.sin(yaw_rad)  # Δy
+                            self.update_tello_location(pos_x, pos_y, yaw_deg)
 
-                else:                                   # --- 직선 전진 구간 ---
-                    for _ in range(steps):
-                        yaw_rad = math.radians(yaw_deg)
-                        fb_cmd  = int(min(fb_max,
-                                        fb_speed / max(1e-5, abs(math.cos(yaw_rad)))))
-                        self.rc(0, fb_cmd, 0, 0)
-                        time.sleep(interval)
+                    else:                                   # --- 직선 전진 구간 ---
+                        for _ in range(steps):
+                            yaw_rad = math.radians(yaw_deg)
+                            fb_cmd  = int(min(fb_max,
+                                            fb_speed / max(1e-5, abs(math.cos(yaw_rad)))))
+                            self.rc(0, fb_cmd, 0, 0)
+                            time.sleep(interval)
 
-                        distance = fb_cmd * interval
-                        pos_x   += distance * math.cos(yaw_rad)
-                        pos_y   += distance * math.sin(yaw_rad)
-                        self.update_tello_location(pos_x, pos_y, yaw_deg)
+                            distance = fb_cmd * interval
+                            pos_x   += distance * math.cos(yaw_rad)
+                            pos_y   += distance * math.sin(yaw_rad)
+                            self.update_tello_location(pos_x, pos_y, yaw_deg)
 
-        print(f"[INFO] ✅  flight finished — final location ≈ [{pos_x:.1f}, {pos_y:.1f}] cm")                  
-        self.tello_to_main_pipe.send(('double_sin_wave','ok'))
+            print(f"[INFO] ✅  flight finished — final location ≈ [{pos_x:.1f}, {pos_y:.1f}] cm")                  
+            #self.tello_to_main_pipe.send(('double_sin_wave','ok'))
                
                
     def readjust_position(

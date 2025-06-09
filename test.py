@@ -168,24 +168,24 @@ class Main:
         self.commander = Commander(self.tello_info, self.main_to_tello_pipes) #Commander객체를 선언해서 실행시킴(해당 객체는 메인 프로세스에서 스레드로 실행될 예정.)
         self.commander.start()
         print("[INFO] Commander 프로세스 실행됨")
-        asyncio.run(self.main_drone.drone_action())
+        await self.main_drone.command_main()
         #임시
-        while True:
-            with self.drone_locaion_Array.get_lock():
-                self.drone_locaion_Array[0] += 3.5
-                with self.tello_location_array.get_lock():
-                    print(f'drone location : {self.drone_locaion_Array}, \n tello location : {self.tello_location_array}')
-            time.sleep(0.1)
+        # while True:
+        #     with self.drone_locaion_Array.get_lock():
+        #         self.drone_locaion_Array[0] += 3.5
+        #         with self.tello_location_array.get_lock():
+        #             print(f'drone location : {self.drone_locaion_Array}, \n tello location : {self.tello_location_array}')
+        #     time.sleep(0.1)
                 
             
         # 종료 처리
-        try:
-            for p in control_procs + [video_proc]:
-                p.join()
-        except KeyboardInterrupt:
-            print("[TEST END] 종료 요청")
-            for p in control_procs + [video_proc]:
-                p.terminate()
+        # try:
+        #     for p in control_procs + [video_proc]:
+        #         p.join()
+        # except KeyboardInterrupt:
+        #     print("[TEST END] 종료 요청")
+        #     for p in control_procs + [video_proc]:
+        #         p.terminate()
         
 if __name__ == "__main__":
     #multiprocessing.set_start_method("spawn") #윈도우 호환 멀티프로세싱 실행.
