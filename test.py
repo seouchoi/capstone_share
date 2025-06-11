@@ -114,14 +114,14 @@ class Main:
         self.control_procs : List = []
         self.main_to_video_pipe, self.video_to_main_pipe = multiprocessing.Pipe()
         self.main_to_gcs_pipe, self.gcs_to_main_pipe = multiprocessing.Pipe()
-        self.drone_locaion_Array : SynchronizedArray = multiprocessing.Array("d", 4, lock=True)
-        self.tello_location_array : SynchronizedArray = multiprocessing.Array("f",8,lock=True)
+        self.drone_locaion_Array : SynchronizedArray = multiprocessing.Array("d", 5, lock=True)
+        self.tello_location_array : SynchronizedArray = multiprocessing.Array("f",10,lock=True)
         self.drone_locaion_Array[0] = 0.0
         self.drone_locaion_Array[1] = 0.0
         self.drone_locaion_Array[2] = 0.0
         self.drone_locaion_Array[3] = 0.0
         with self.tello_location_array.get_lock():
-            self.tello_location_array[:] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            self.tello_location_array[:] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
             self.tello_location_array_len = len(self.tello_location_array)
         self.gcs_connecter = GcsConnector(self.gcs_to_main_pipe, self.main_to_video_pipe, self.drone_locaion_Array, self.tello_location_array)
         
@@ -140,7 +140,7 @@ class Main:
         for i, (name, (ip, port)) in enumerate(self.tello_info.items()):
             self.tello_ips.append(ip)
             with self.tello_location_array.get_lock():
-                for i in range(0,self.tello_location_array_len,4):
+                for i in range(0,self.tello_location_array_len,5):
                     if self.tello_location_array[i] == 0:
                         self.tello_location_array[i] = float(port)
                         break

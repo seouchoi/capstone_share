@@ -57,7 +57,7 @@ class Tello(Action): #Action클래스를 상속받는 Tello 객체.
     def compute_drone_speed(self) -> float:    #드론의 속도를 계산하는 함수
         #now = time.time()
         location = self.get_drone_location() #드론의 위치를 가져옴
-        return location[3] + 10 # from drone's telemetry
+        return location[3] #+ 10 # from drone's telemetry
         #speed = math.sqrt((location[0] - self.latest_drone_location['location'][0])**2 + (location[1] - self.latest_drone_location['location'][1])**2) / (now - self.latest_drone_location['time']) #드론의 속도를 계산함
         #self.latest_drone_location['location'] = location #드론의 위치를 저장함
         #self.latest_drone_location['time'] = now #드론의 시간을 저장함
@@ -74,7 +74,7 @@ class Tello(Action): #Action클래스를 상속받는 Tello 객체.
         with self.tello_location_array.get_lock():
             arr = list(self.tello_location_array)
         n = len(arr)
-        for i in range(0, n, 4):
+        for i in range(0, n, 5):
             if int(arr[i]) == self.port:
                 return arr[i+1:i+3]
         return []
@@ -83,11 +83,12 @@ class Tello(Action): #Action클래스를 상속받는 Tello 객체.
     def update_tello_location(self,pos_x : float, pos_y : float, yaw : float) -> None:
         with self.tello_location_array.get_lock():
             n = len(self.tello_location_array)
-            for i in range(0, n, 4):
+            for i in range(0, n, 5):
                 if int(self.tello_location_array[i]) == self.port:
                     self.tello_location_array[i + 1] = pos_x
                     self.tello_location_array[i + 2] = pos_y
                     self.tello_location_array[i + 3] = yaw
+                    self.tello_location_array[i + 4] = self.tello_state['height']
                     return
                 
 

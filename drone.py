@@ -17,7 +17,7 @@ class DroneObject:
         self.mission_callback = mission_callback
         self.drone :Optional[System] = None
         self.state : Dict = dict(
-            speed=0.0,
+            speed=35.0,
             location_latitude=37.5665,
             location_longitude=126.9780,
             altitude=0.0,
@@ -49,19 +49,20 @@ class DroneObject:
                 async for pos in self.drone.telemetry.position():
                     self.state['location_latitude'] = round(pos.latitude_deg, 6)
                     self.state['location_longitude'] = round(pos.longitude_deg, 6)
+                    self.state['altitude'] = round(pos.relative_altitude_m, 2)
                     break
                 async for att in self.drone.telemetry.attitude_euler():
                     self.state['yaw'] = round(att.yaw_deg ,2)
                     break
                 async for vel in self.drone.telemetry.velocity_ned():
-                    self.state['speed'] = round(math.sqrt(vel.north_m_s**2 + vel.east_m_s**2 + vel.down_m_s**2 ))
+                    #self.state['speed'] = round((math.sqrt(vel.north_m_s**2 + vel.east_m_s**2 + vel.down_m_s**2 ))*100)
                     break
                 with self.drone_locaion_Array.get_lock():
                     self.drone_locaion_Array[0] = self.state['location_latitude']
                     self.drone_locaion_Array[1] = self.state['location_longitude']
                     self.drone_locaion_Array[2] = self.state['yaw']
                     self.drone_locaion_Array[3] = self.state['speed']
-
+                    self.drone_locaion_Array[4] = self.state['altitude']
                 '''
                 if self.end:
                     return
@@ -99,19 +100,23 @@ class DroneObject:
                     await asyncio.sleep(3)
                     self.mission_callback('up')
                     await asyncio.sleep(10)
-                    await drone.action.takeoff()
+                    #await drone.action.takeoff()
+                    print('drone takeoff')
                     await asyncio.sleep(5)
-                    await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
-                    await drone.offboard.start()
-                    await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.35, 0.0, 0.0, 0.0))
-                    await asyncio.sleep(0.5)
+                    #await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
+                    #await drone.offboard.start()
+                    #await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.35, 0.0, 0.0, 0.0))
+                    print('drone set_velocity_body')
+                    #await asyncio.sleep(0.5)
                     self.mission_callback('ready')
                     await asyncio.sleep(29.5)
-                    await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
-                    await drone.offboard.stop()
-                    await drone.action.land()
+                    #await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
+                    #await drone.offboard.stop()
+                    #await drone.action.land()
+                    print('drone land')
                     await asyncio.sleep(5)
-                    await drone.action.disarm()
+                    #await drone.action.disarm()
+                    print('drone disarm')
                     
                 if command == 'end':
                     self.mission_callback('land')

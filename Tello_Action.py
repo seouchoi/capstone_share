@@ -87,13 +87,6 @@ class Action:
         cmd = f"rc {lr} {fb} {ud} {yaw}"
         self.send_command(cmd, wait_time = -1)
 
-    # ✅ 회전 명령 (단위: 도, 범위: 1 ~ 360)
-    def cw(self, degree: int):
-        return self.send_command(f"cw {degree}")   # 시계방향 회전: 1~360도
-
-    def ccw(self, degree: int):
-        return self.send_command(f"ccw {degree}")  # 반시계방향 회전: 1~360도
-
 
     def double_sin_wave(
         self,
@@ -169,9 +162,8 @@ class Action:
                         distance = fb_cmd * interval
                         pos_x += distance * math.cos(yaw_rad)
                         pos_y += distance * math.sin(yaw_rad)
-                        self.update_tello_location(pos_x, pos_y, yaw_deg)
-                    
-        print(f"[INFO] ✅  flight finished — final location ≈ [{pos_x:.1f}, {pos_y:.1f}] cm")
+                        self.update_tello_location(pos_x, pos_y, yaw_deg)                  
+        self.tello_to_main_pipe.send(('double_sin_wave','ok'))
                
                
     def readjust_position(
@@ -212,7 +204,7 @@ class Action:
         print(f"[INFO] {name}: 최종 위치 재조정 → x={go_x}, y={go_y}")
         self.go(go_x, go_y, 0, shift_speed)
         time.sleep(math.hypot(go_x, go_y) / shift_speed + settle)
-        
+        self.tello_to_main_pipe.send(('readjust_position','ok'))
         
     def solo_sin_wave(
             self,
@@ -318,6 +310,12 @@ class Action:
     # def down(self, x: int):
     #     return self.send_command(f"down {x}")     # 하강: 20~500 cm
 
+    # # ✅ 회전 명령 (단위: 도, 범위: 1 ~ 360)
+    # def cw(self, degree: int):
+    #     return self.send_command(f"cw {degree}")   # 시계방향 회전: 1~360도
+
+    # def ccw(self, degree: int):
+    #     return self.send_command(f"ccw {degree}")  # 반시계방향 회전: 1~360도
 
     # # ✅ 플립 (방향: l/r/f/b)
     # def flip(self, direction: str):

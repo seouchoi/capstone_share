@@ -22,8 +22,17 @@ def recv_message(client_socket, address):
             data_byte = client_socket.recv(1024)
             data : str = pickle.loads(data_byte)
             print(f'recv data : {data}')
+        except pickle.UnpicklingError as e:
+            # 'invalid load key, '\x00'' 에러일 때만 건너뛰기
+            if "invalid load key" in str(e):
+                print("invalid load key 조각 건너뛰기")
+                continue
+            # 다른 UnpicklingError는 루프 종료
+            print("언피클 오류:", e)
+            break
         except Exception as e:
             print(f'recv_message error : {e}')
+            return
         
 def close_wait(server_socket):
     image = np.ones((10, 10, 3), dtype=np.uint8) * 255
@@ -51,7 +60,9 @@ if __name__ == "__main__":
             send_thread = threading.Thread(target=send_message, args=(client_socket, address))
             send_thread.daemon=True
             send_thread.start()
-            
+            recv_thread = threading.Thread(target=recv_message, args=(client_socket, address))
+            recv_thread.daemon=True
+            recv_thread.start()
         except Exception as e:
             print(e)
             print(type(e))
