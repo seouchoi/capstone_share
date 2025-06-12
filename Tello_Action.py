@@ -87,16 +87,23 @@ class Action:
         cmd = f"rc {lr} {fb} {ud} {yaw}"
         self.send_command(cmd, wait_time = -1)
 
+    # ✅ 회전 명령 (단위: 도, 범위: 1 ~ 360)
+    def cw(self, degree: int):
+        return self.send_command(f"cw {degree}")   # 시계방향 회전: 1~360도
+
+    def ccw(self, degree: int):
+        return self.send_command(f"ccw {degree}")  # 반시계방향 회전: 1~360도
+
 
     def double_sin_wave(
         self,
         cycles: int = 1,
         interval: float = 0.02,
-        hold_time_1: float = 2.7,
-        hold_time_2: float = 4.0,
+        hold_time_1: float = 4.0,
+        hold_time_2: float = 8.0,
         fb_max: int = 100,
         name: str = None,
-        turn_deg = 45
+        turn_deg = 30
     ):
         fb_speed = self.compute_drone_speed()
         print(f"[INFO] 🛫  double_sin_wave (cw/ccw + rc 직진): fb_speed = {fb_speed:.1f} cm/s")
@@ -139,15 +146,33 @@ class Action:
                         diff = (ideal_deg - yaw_deg + 360) % 360
                         print(f"[TURN] cw: 목표={ideal_deg:.1f}, 현재={yaw_deg:.1f}, 보정={diff:.1f}")
                         self.cw(int(diff))
-                        time.sleep(2)
-                        yaw_deg += diff                  
+                        
+                        step_time = 0.1
+                        steps = int(2.5 / step_time)
+                        step_deg = diff / steps
+
+                        for _ in range(steps):
+                            yaw_deg = (yaw_deg + step_deg) % 360
+                            self.update_tello_location(pos_x, pos_y, yaw_deg)
+                            time.sleep(step_time)
+                             
+                            
                     else:
                         ideal_deg = (ideal_deg - value + 360) % 360
                         diff = (yaw_deg - ideal_deg + 360) % 360
                         print(f"[TURN] ccw: 목표={ideal_deg:.1f}, 현재={yaw_deg:.1f}, 보정={diff:.1f}")
                         self.ccw(int(diff))
-                        time.sleep(2)
-                        yaw_deg -= diff
+                        
+                        step_time = 0.1
+                        steps = int(2.5 / step_time)
+                        step_deg = diff / steps
+
+                        for _ in range(steps):
+                            yaw_deg = (yaw_deg - step_deg + 360) % 360
+                            self.update_tello_location(pos_x, pos_y, yaw_deg)
+                            time.sleep(step_time)
+                            
+                        
                     self.update_tello_location(pos_x, pos_y, yaw_deg)
 
                 elif action == "fwd":
@@ -157,61 +182,82 @@ class Action:
                         yaw_rad = math.radians(yaw_deg)
                         fb_cmd = int(min(fb_max, fb_speed / max(1e-5, abs(math.cos(yaw_rad)))))
                         self.rc(0, fb_cmd, 0, 0)
-                        time.sleep(interval)
 
                         distance = fb_cmd * interval
                         pos_x += distance * math.cos(yaw_rad)
                         pos_y += distance * math.sin(yaw_rad)
-                        self.update_tello_location(pos_x, pos_y, yaw_deg)                  
+                        self.update_tello_location(pos_x, pos_y, yaw_deg)
+                        time.sleep(interval)
+                    
         self.tello_to_main_pipe.send(('double_sin_wave','ok'))
                
                
     def readjust_position(
         self,
-        name: str = None,                  # "tello0"(왼쪽) | "tello1"(오른쪽)
+        name: str = None,           # "tello0"(왼쪽) | "tello1"(오른쪽)
         angle_deg: float = 15,      # 가로(y)축과 이루는 각도
         y_fixed: int = 1000,        # y축 이동량(cm) = 10 m 고정
         shift_speed: int = 80,      # go 속도 10–100 cm/s
-        diag_x: int = 100,          # 기존 보정용 파라미터(그대로 유지)
-        y_offset: int = 200,
         settle: float = 0.5
     ):
         """
         살아남은 드론을 메인 쪽으로 재배치:
-        1) 가로(y)축으로 ±10 m 이동하면서 angle_deg° 대각선 진입
+        1) y축으로 ±10 m 이동하면서 angle_deg° 대각선 진입
         (y 고정 → x = y * tan(angle))
-        2) 이후 기존 로직대로 (diag_x, -start_y) 위치로 go 이동
         """
 
-        # ──────────────────────────────
-        # 1️⃣  y축 ±1000 cm + 대각선 진입
-        # ──────────────────────────────
-        sign_y = 1 if name == "tello0" else -1      # tello0: +y(→) / tello1: –y(←)
-        dy = sign_y * y_fixed                       # ±1000 cm
-        dx = int(abs(dy) * math.tan(math.radians(angle_deg)))  # 항상 전진(+) 방향
+        # ── 현재 위치·yaw 읽기 ─────────────────────────────────
+        [pos_x, pos_y] = self.get_tello_location()
+        yaw_deg = self.tello_state["yaw"]
+
+        # ── 목표 Δx, Δy 계산 ─────────────────────────────────
+        sign_y = 1 if name == "tello0" else -1         # tello0: +y / tello1: –y
+        dy = sign_y * y_fixed                          # ±1000 cm
+        dx = abs(dy) * math.tan(math.radians(angle_deg))  # 실수 그대로 (cm)
+
         total_dist = math.hypot(dx, dy)
+        print(f"[INFO] {name}: y={dy:.1f} cm, x={dx:.1f} cm (angle={angle_deg}°) 대각선 이동")
 
-        print(f"[INFO] {name}: y={dy}cm, x={dx}cm (angle={angle_deg}°) 대각선 이동")
-        self.go(dx, dy, 0, shift_speed)             # go(x=전진, y=좌우, z, speed)
-        time.sleep(total_dist / shift_speed + settle)
+        # go()는 정수만 받으므로 반올림
+        self.go(int(round(dx)), int(round(dy)), 0, shift_speed)
 
-        # ──────────────────────────────
-        # 2️⃣  기존 대각선 (diag_x, -start_y) 보정
-        # ──────────────────────────────
-        start_y = -y_offset if name == "tello0" else y_offset
-        go_x, go_y = diag_x, -start_y
+        # ── 이동 중 위치 추정 보간 ─────────────────────────────
+        move_time = total_dist / shift_speed + settle  # s
+        step_time = 0.1                                # s
+        steps = int(move_time // step_time)
 
-        print(f"[INFO] {name}: 최종 위치 재조정 → x={go_x}, y={go_y}")
-        self.go(go_x, go_y, 0, shift_speed)
-        time.sleep(math.hypot(go_x, go_y) / shift_speed + settle)
-        self.tello_to_main_pipe.send(('readjust_position','ok'))
+        local_dx_step = dx / steps
+        local_dy_step = dy / steps
+
+        for _ in range(steps):
+            self.update_state()                # yaw 최신화
+            yaw_deg = self.tello_state["yaw"]
+            yaw_rad = math.radians(yaw_deg)
+
+            # 기체 기준 Δx, Δy → 세계 좌표로 변환
+            world_dx =  local_dx_step * math.cos(yaw_rad) - local_dy_step * math.sin(yaw_rad)
+            world_dy =  local_dx_step * math.sin(yaw_rad) + local_dy_step * math.cos(yaw_rad)
+
+            pos_x += world_dx
+            pos_y += world_dy
+            self.update_tello_location(pos_x, pos_y, yaw_deg)
+            time.sleep(step_time)
+
+        # 남는 잔여 시간(≤ step_time) 보정
+        residual = move_time - steps * step_time
+        if residual > 1e-3:
+            time.sleep(residual)
+
+        # 완료 신호
+        self.tello_to_main_pipe.send(('readjust_position', 'ok'))
+        
         
     def solo_sin_wave(
             self,
             cycles: int = 1,
             interval: float = 0.02,
-            hold_time_1: float = 4.7,
-            hold_time_2: float = 8.0,
+            hold_time_1: float = 8.0,
+            hold_time_2: float = 16.0,
             fb_max: int = 100,
             name: str = None,
             turn_deg = 45
@@ -257,15 +303,31 @@ class Action:
                             diff = (ideal_deg - yaw_deg + 360) % 360
                             print(f"[TURN] cw: 목표={ideal_deg:.1f}, 현재={yaw_deg:.1f}, 보정={diff:.1f}")
                             self.cw(int(diff))
-                            time.sleep(2)
-                            yaw_deg += diff                  
+                            
+                            step_time = 0.1
+                            steps = int(2.5 / step_time)
+                            step_deg = diff / steps
+
+                            for _ in range(steps):
+                                yaw_deg = (yaw_deg + step_deg) % 360
+                                self.update_tello_location(pos_x, pos_y, yaw_deg)
+                                time.sleep(step_time)
+              
                         else:
                             ideal_deg = (ideal_deg - value + 360) % 360
                             diff = (yaw_deg - ideal_deg + 360) % 360
                             print(f"[TURN] ccw: 목표={ideal_deg:.1f}, 현재={yaw_deg:.1f}, 보정={diff:.1f}")
                             self.ccw(int(diff))
-                            time.sleep(2)
-                            yaw_deg -= diff
+                            
+                            step_time = 0.1
+                            steps = int(2.5 / step_time)
+                            step_deg = diff / steps
+
+                            for _ in range(steps):
+                                yaw_deg = (yaw_deg - step_deg + 360) % 360
+                                self.update_tello_location(pos_x, pos_y, yaw_deg)
+                                time.sleep(step_time)
+                            
                         self.update_tello_location(pos_x, pos_y, yaw_deg)
 
                     elif action == "fwd":
@@ -281,8 +343,7 @@ class Action:
                             pos_x += distance * math.cos(yaw_rad)
                             pos_y += distance * math.sin(yaw_rad)
                             self.update_tello_location(pos_x, pos_y, yaw_deg)
-                        
-            print(f"[INFO] ✅  flight finished — final location ≈ [{pos_x:.1f}, {pos_y:.1f}] cm")               
+                                   
             self.tello_to_main_pipe.send(('solo_sin_wave','ok'))
         
 
@@ -310,12 +371,6 @@ class Action:
     # def down(self, x: int):
     #     return self.send_command(f"down {x}")     # 하강: 20~500 cm
 
-    # # ✅ 회전 명령 (단위: 도, 범위: 1 ~ 360)
-    # def cw(self, degree: int):
-    #     return self.send_command(f"cw {degree}")   # 시계방향 회전: 1~360도
-
-    # def ccw(self, degree: int):
-    #     return self.send_command(f"ccw {degree}")  # 반시계방향 회전: 1~360도
 
     # # ✅ 플립 (방향: l/r/f/b)
     # def flip(self, direction: str):
