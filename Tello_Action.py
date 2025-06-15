@@ -1,4 +1,3 @@
-
 import time
 import math
 
@@ -99,8 +98,8 @@ class Action:
         self,
         cycles: int = 1,
         interval: float = 0.02,
-        hold_time_1: float = 4.0,
-        hold_time_2: float = 8.0,
+        hold_time_1: float = 5,
+        hold_time_2: float = 9,
         fb_max: int = 100,
         name: str = None,
         turn_deg = 30
@@ -146,50 +145,35 @@ class Action:
                         diff = (ideal_deg - yaw_deg + 360) % 360
                         print(f"[TURN] cw: 목표={ideal_deg:.1f}, 현재={yaw_deg:.1f}, 보정={diff:.1f}")
                         self.cw(int(diff))
-                        
-                        step_time = 0.1
-                        steps = int(1.0 / step_time)
-                        step_deg = diff / steps
-
-                        for _ in range(steps):
-                            yaw_deg = (yaw_deg + step_deg) % 360
-                            self.update_tello_location(pos_x, pos_y, yaw_deg)
-                            self.rc(0, 0, 0, 0)
-                            time.sleep(step_time)
-                             
-                            
+                        time.sleep(2)
+                        yaw_deg += diff                  
                     else:
                         ideal_deg = (ideal_deg - value + 360) % 360
                         diff = (yaw_deg - ideal_deg + 360) % 360
                         print(f"[TURN] ccw: 목표={ideal_deg:.1f}, 현재={yaw_deg:.1f}, 보정={diff:.1f}")
                         self.ccw(int(diff))
-                        
-                        step_time = 0.1
-                        steps = int(1.0 / step_time)
-                        step_deg = diff / steps
-
-                        for _ in range(steps):
-                            yaw_deg = (yaw_deg - step_deg + 360) % 360
-                            self.update_tello_location(pos_x, pos_y, yaw_deg)
-                            self.rc(0, 0, 0, 0)
-                            time.sleep(step_time)
-                            
-                        
+                        time.sleep(2)
+                        yaw_deg -= diff
                     self.update_tello_location(pos_x, pos_y, yaw_deg)
 
                 elif action == "fwd":
                     print(f"[FWD] {value:.2f}s")
                     steps = int(value / interval)
-                    for _ in range(steps):
+                    skip_time = 1.0
+                    skip_steps = int(skip_time / interval)
+                    for i in range(steps):
                         yaw_rad = math.radians(yaw_deg)
                         fb_cmd = int(min(fb_max, fb_speed / max(1e-5, abs(math.cos(yaw_rad)))))
                         self.rc(0, fb_cmd, 0, 0)
-
-                        distance = fb_cmd * interval
-                        pos_x += distance * math.cos(yaw_rad)
-                        pos_y += distance * math.sin(yaw_rad)
-                        self.update_tello_location(pos_x, pos_y, yaw_deg)
                         time.sleep(interval)
+
+                        if i >= skip_steps:
+                            distance = fb_cmd * interval
+                            pos_x += distance * math.cos(yaw_rad)
+                            pos_y += distance * math.sin(yaw_rad)
+                            self.update_tello_location(pos_x, pos_y, yaw_deg)
+                    
+        print(f"[INFO] ✅  flight finished — final location ≈ [{pos_x:.1f}, {pos_y:.1f}] cm")
                     
         self.tello_to_main_pipe.send(('double_sin_wave','ok'))
                
@@ -252,14 +236,14 @@ class Action:
 
         # 완료 신호
         self.tello_to_main_pipe.send(('readjust_position', 'ok'))
-        
+         
         
     def solo_sin_wave(
             self,
             cycles: int = 1,
             interval: float = 0.02,
-            hold_time_1: float = 8.0,
-            hold_time_2: float = 16.0,
+            hold_time_1: float = 9,
+            hold_time_2: float = 17,
             fb_max: int = 100,
             name: str = None,
             turn_deg = 45
@@ -305,49 +289,35 @@ class Action:
                             diff = (ideal_deg - yaw_deg + 360) % 360
                             print(f"[TURN] cw: 목표={ideal_deg:.1f}, 현재={yaw_deg:.1f}, 보정={diff:.1f}")
                             self.cw(int(diff))
-                            
-                            step_time = 0.1
-                            steps = int(1.0 / step_time)
-                            step_deg = diff / steps
-
-                            for _ in range(steps):
-                                yaw_deg = (yaw_deg + step_deg) % 360
-                                self.update_tello_location(pos_x, pos_y, yaw_deg)
-                                self.rc(0, 0, 0, 0)
-                                time.sleep(step_time)
-              
+                            time.sleep(2)
+                            yaw_deg += diff                  
                         else:
                             ideal_deg = (ideal_deg - value + 360) % 360
                             diff = (yaw_deg - ideal_deg + 360) % 360
                             print(f"[TURN] ccw: 목표={ideal_deg:.1f}, 현재={yaw_deg:.1f}, 보정={diff:.1f}")
                             self.ccw(int(diff))
-                            
-                            step_time = 0.1
-                            steps = int(1.0 / step_time)
-                            step_deg = diff / steps
-
-                            for _ in range(steps):
-                                yaw_deg = (yaw_deg - step_deg + 360) % 360
-                                self.update_tello_location(pos_x, pos_y, yaw_deg)
-                                self.rc(0, 0, 0, 0)
-                                time.sleep(step_time)
-                            
+                            time.sleep(2)
+                            yaw_deg -= diff
                         self.update_tello_location(pos_x, pos_y, yaw_deg)
 
                     elif action == "fwd":
                         print(f"[FWD] {value:.2f}s")
                         steps = int(value / interval)
-                        for _ in range(steps):
+                        for i in range(steps):
                             yaw_rad = math.radians(yaw_deg)
                             fb_cmd = int(min(fb_max, fb_speed / max(1e-5, abs(math.cos(yaw_rad)))))
                             self.rc(0, fb_cmd, 0, 0)
                             time.sleep(interval)
-
-                            distance = fb_cmd * interval
-                            pos_x += distance * math.cos(yaw_rad)
-                            pos_y += distance * math.sin(yaw_rad)
-                            self.update_tello_location(pos_x, pos_y, yaw_deg)
-                                   
+                            skip_time = 1.0
+                            skip_steps = int(skip_time / interval)
+                            
+                            if i >= skip_steps:
+                                distance = fb_cmd * interval
+                                pos_x += distance * math.cos(yaw_rad)
+                                pos_y += distance * math.sin(yaw_rad)
+                                self.update_tello_location(pos_x, pos_y, yaw_deg)
+                        
+            print(f"[INFO] ✅  flight finished — final location ≈ [{pos_x:.1f}, {pos_y:.1f}] cm")               
             self.tello_to_main_pipe.send(('solo_sin_wave','ok'))
         
 
