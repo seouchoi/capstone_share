@@ -57,7 +57,7 @@ class Tello(Action): #Action클래스를 상속받는 Tello 객체.
     def compute_drone_speed(self) -> float:    #드론의 속도를 계산하는 함수
         #now = time.time()
         location = self.get_drone_location() #드론의 위치를 가져옴
-        return location[3] #+ 10 # from drone's telemetry
+        return location[3] + 10 # from drone's telemetry
         #speed = math.sqrt((location[0] - self.latest_drone_location['location'][0])**2 + (location[1] - self.latest_drone_location['location'][1])**2) / (now - self.latest_drone_location['time']) #드론의 속도를 계산함
         #self.latest_drone_location['location'] = location #드론의 위치를 저장함
         #self.latest_drone_location['time'] = now #드론의 시간을 저장함
