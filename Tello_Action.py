@@ -148,12 +148,13 @@ class Action:
                         self.cw(int(diff))
                         
                         step_time = 0.1
-                        steps = int(2.5 / step_time)
+                        steps = int(1.0 / step_time)
                         step_deg = diff / steps
 
                         for _ in range(steps):
                             yaw_deg = (yaw_deg + step_deg) % 360
                             self.update_tello_location(pos_x, pos_y, yaw_deg)
+                            self.rc(0, 0, 0, 0)
                             time.sleep(step_time)
                              
                             
@@ -164,12 +165,13 @@ class Action:
                         self.ccw(int(diff))
                         
                         step_time = 0.1
-                        steps = int(2.5 / step_time)
+                        steps = int(1.0 / step_time)
                         step_deg = diff / steps
 
                         for _ in range(steps):
                             yaw_deg = (yaw_deg - step_deg + 360) % 360
                             self.update_tello_location(pos_x, pos_y, yaw_deg)
+                            self.rc(0, 0, 0, 0)
                             time.sleep(step_time)
                             
                         
@@ -196,7 +198,7 @@ class Action:
         self,
         name: str = None,           # "tello0"(왼쪽) | "tello1"(오른쪽)
         angle_deg: float = 15,      # 가로(y)축과 이루는 각도
-        y_fixed: int = 1000,        # y축 이동량(cm) = 10 m 고정
+        y_fixed: int = 500,        # y축 이동량(cm) = 10 m 고정
         shift_speed: int = 80,      # go 속도 10–100 cm/s
         settle: float = 0.5
     ):
@@ -211,7 +213,7 @@ class Action:
         yaw_deg = self.tello_state["yaw"]
 
         # ── 목표 Δx, Δy 계산 ─────────────────────────────────
-        sign_y = 1 if name == "tello0" else -1         # tello0: +y / tello1: –y
+        sign_y = -1 if name == "tello0" else 1         # tello0: +y / tello1: –y
         dy = sign_y * y_fixed                          # ±1000 cm
         dx = abs(dy) * math.tan(math.radians(angle_deg))  # 실수 그대로 (cm)
 
@@ -305,12 +307,13 @@ class Action:
                             self.cw(int(diff))
                             
                             step_time = 0.1
-                            steps = int(2.5 / step_time)
+                            steps = int(1.0 / step_time)
                             step_deg = diff / steps
 
                             for _ in range(steps):
                                 yaw_deg = (yaw_deg + step_deg) % 360
                                 self.update_tello_location(pos_x, pos_y, yaw_deg)
+                                self.rc(0, 0, 0, 0)
                                 time.sleep(step_time)
               
                         else:
@@ -320,12 +323,13 @@ class Action:
                             self.ccw(int(diff))
                             
                             step_time = 0.1
-                            steps = int(2.5 / step_time)
+                            steps = int(1.0 / step_time)
                             step_deg = diff / steps
 
                             for _ in range(steps):
                                 yaw_deg = (yaw_deg - step_deg + 360) % 360
                                 self.update_tello_location(pos_x, pos_y, yaw_deg)
+                                self.rc(0, 0, 0, 0)
                                 time.sleep(step_time)
                             
                         self.update_tello_location(pos_x, pos_y, yaw_deg)
