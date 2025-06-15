@@ -55,7 +55,7 @@ class DroneObject:
                     self.state['yaw'] = round(att.yaw_deg ,2)
                     break
                 async for vel in self.drone.telemetry.velocity_ned():
-                    #self.state['speed'] = round((math.sqrt(vel.north_m_s**2 + vel.east_m_s**2 + vel.down_m_s**2 ))*100)
+                    self.state['speed'] = round((math.sqrt(vel.north_m_s**2 + vel.east_m_s**2 + vel.down_m_s**2 ))*100)
                     break
                 with self.drone_locaion_Array.get_lock():
                     self.drone_locaion_Array[0] = self.state['location_latitude']
@@ -90,50 +90,46 @@ class DroneObject:
             
     
     async def drone_action(self) -> None:
-        while True:
-            try:
-                if self.end:
-                    return
-                command = self.main_to_gcs_pipe.recv()
-                if command == 'start':
-                    self.mission_callback('takeoff')
-                    await asyncio.sleep(3)
-                    self.mission_callback('up')
-                    await asyncio.sleep(10)
-                    #await drone.action.takeoff()
-                    print('drone takeoff')
-                    await asyncio.sleep(5)
-                    #await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
-                    #await drone.offboard.start()
-                    #await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.35, 0.0, 0.0, 0.0))
-                    print('drone set_velocity_body')
-                    #await asyncio.sleep(0.5)
-                    self.mission_callback('ready')
-                    await asyncio.sleep(29.5)
-                    #await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
-                    #await drone.offboard.stop()
-                    #await drone.action.land()
-                    print('drone land')
-                    await asyncio.sleep(5)
-                    #await drone.action.disarm()
-                    print('drone disarm')
-                    
-                if command == 'end':
-                    self.mission_callback('land')
-                    await self.drone.action.land()
-                    await asyncio.sleep(5)
-                    await drone.action.disarm()
-                    exit(1)
-                
-            except Exception as e:
-                print(f'drone_action : {str(e)}')
+        try:
+            await asyncio.sleep(1)
+            self.mission_callback('takeoff')
+            await asyncio.sleep(3)
+            self.mission_callback('up')
+            await asyncio.sleep(10)
+            await self.drone.action.arm()
+            await asyncio.sleep(3)
+            await self.drone.action.takeoff()
+            print('drone takeoff')
+            await asyncio.sleep(5)
+            await self.drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
+            await self.drone.offboard.start()
+            await self.drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.35, 0.0, 0.0, 0.0))
+            print('drone set_velocity_body')
+            await asyncio.sleep(0.5)
+            self.mission_callback('ready')
+            await asyncio.sleep(29.5)
+            await self.drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
+            await self.drone.offboard.stop()
+            await self.drone.action.land()
+            self.mission_callback('land')
+            print('drone land')
+            await asyncio.sleep(5)
+            await self.drone.action.disarm()
+            print('drone disarm')
+        except Exception as e:
+            print(f'drone_action : {str(e)}')
+
     
     async def command_main(self) -> None:
         self.drone = System()
         await self.connect_drone()
+        await asyncio.gather(self.update_drone_state(), self.drone_action())
+        '''
         state_task  = asyncio.create_task(self.update_drone_state())
         action_task = asyncio.create_task(self.drone_action())
         await asyncio.wait(
             [state_task, action_task],
             return_when=asyncio.FIRST_COMPLETED
         )
+        '''
+

@@ -85,8 +85,8 @@ class Tello(Action): #Action클래스를 상속받는 Tello 객체.
             n = len(self.tello_location_array)
             for i in range(0, n, 5):
                 if int(self.tello_location_array[i]) == self.port:
-                    self.tello_location_array[i + 1] = pos_x
-                    self.tello_location_array[i + 2] = pos_y
+                    self.tello_location_array[i + 1] = round(pos_x,2)
+                    self.tello_location_array[i + 2] = round(pos_y,2)
                     self.tello_location_array[i + 3] = yaw
                     self.tello_location_array[i + 4] = self.tello_state['height']
                     return

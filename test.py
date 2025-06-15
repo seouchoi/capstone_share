@@ -140,9 +140,9 @@ class Main:
         for i, (name, (ip, port)) in enumerate(self.tello_info.items()):
             self.tello_ips.append(ip)
             with self.tello_location_array.get_lock():
-                for i in range(0,self.tello_location_array_len,5):
-                    if self.tello_location_array[i] == 0:
-                        self.tello_location_array[i] = float(port)
+                for k in range(0,self.tello_location_array_len,5):
+                    if self.tello_location_array[k] == 0:
+                        self.tello_location_array[k] = float(port)
                         break
             globals()[f"main_to_tello_pipe_{ip}"], globals()[f"tello_to_main_pipe_{ip}"] = multiprocessing.Pipe()   #메인과 텔로 프로세스를 이어줄 파이프를 만듦.
             self.main_to_tello_pipes[f"tello{i}"] = globals()[f"main_to_tello_pipe_{ip}"] #{"tello1" : main_to_tello_pipe_{ip}}
